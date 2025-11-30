@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 # 1. 페이지 설정
 st.set_page_config(page_title="엘랑비탈 정기배송", page_icon="🏥", layout="wide")
 
-# [수정] 한국 시간(KST) 전역 변수 설정 (여기 있어야 에러가 안 납니다!)
+# [중요] 한국 시간(KST) 설정 (맨 위로 이동)
 KST = timezone(timedelta(hours=9))
 
 # 2. 보안 설정
@@ -22,7 +22,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 정기배송 v.4.4.3")
+            st.title("🔒 엘랑비탈 정기배송 v.4.5")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -37,7 +37,7 @@ def add_patient(db, name, group, note, default, items):
     db[name] = {"group": group, "note": note, "default": default, "items": items}
 
 def init_session_state():
-    # (1) 날짜 초기화 (한국 시간 기준)
+    # (1) 날짜 초기화
     if 'target_date' not in st.session_state:
         st.session_state.target_date = datetime.now(KST)
     
@@ -76,3 +76,257 @@ def init_session_state():
 
     if 'patient_db' not in st.session_state:
         db = {}
+        # -- 남양주 --
+        items = [{"제품": "시원한 것", "용량": "280ml", "수량": 21}, {"제품": "커드 시원한 것", "용량": "280ml", "수량": 14}, {"제품": "EX", "용량": "280ml", "수량": 3}, {"제품": "인삼대사체(PAGI) 항암용", "용량": "50ml", "수량": 7, "비고": "원액"}, {"제품": "표고버섯 대사체", "용량": "50ml", "수량": 7}]
+        add_patient(db, "남양주 1", "남양주", "매주 발송", True, items)
+
+        items = [{"제품": "마시는 것", "용량": "280ml", "수량": 14}, {"제품": "시원한 것", "용량": "280ml", "수량": 14}, {"제품": "커드 시원한 것", "용량": "280ml", "수량": 14}, {"제품": "커드", "용량": "150ml", "수량": 7}, {"제품": "인삼대사체(PAGI) 항암용", "용량": "50ml", "수량": 14}, {"제품": "개망초(EDF)", "용량": "50ml", "수량": 7}, {"제품": "장미꽃 대사체", "용량": "50ml", "수량": 3}]
+        add_patient(db, "남양주 2", "남양주", "매주 발송", True, items)
+
+        items = [{"제품": "시원한 것", "용량": "280ml", "수량": 14}, {"제품": "마시는 것", "용량": "280ml", "수량": 7}, {"제품": "커드 시원한 것", "용량": "280ml", "수량": 7}, {"제품": "인삼대사체(PAGI) 항암용", "용량": "50ml", "수량": 7}, {"제품": "애기똥풀 대사체", "용량": "50ml", "수량": 7}]
+        add_patient(db, "남양주 4", "남양주", "매주 발송", True, items)
+
+        # -- 유방암 --
+        items = [{"제품": "혼합 [E.R.P.V.P]", "용량": "150ml", "수량": 14, "타입": "혼합"}, {"제품": "시원한 것", "용량": "280ml", "수량": 42}, {"제품": "마시는 것", "용량": "280ml", "수량": 14}, {"제품": "커드 시원한 것", "용량": "280ml", "수량": 14}]
+        add_patient(db, "김동민 부인", "유방암", "2주 간격", True, items)
+        
+        items = [{"제품": "인삼 사이다", "용량": "280ml", "수량": 14}, {"제품": "마시는 것", "용량": "280ml", "수량": 28}, {"제품": "시원한 것", "용량": "280ml", "수량": 28}, {"제품": "커드 시원한 것", "용량": "280ml", "수량": 14}, {"제품": "인삼대사체(PAGI) 항암용", "용량": "50ml", "수량": 14}, {"제품": "송이 대사체", "용량": "50ml", "수량": 14}]
+        add_patient(db, "김귀례", "유방암", "2주 간격", True, items)
+        
+        items = [{"제품": "혼합 [P.V.E]", "용량": "150ml", "수량": 14, "타입": "혼합"}, {"제품": "혼합 [P.P.E]", "용량": "150ml", "수량": 14, "타입": "혼합"}, {"제품": "인삼대사체(PAGI) 항암용", "용량": "50ml", "수량": 42}, {"제품": "시원한 것", "용량": "280ml", "수량": 42}, {"제품": "커드 시원한 것", "용량": "280ml", "수량": 28}]
+        add_patient(db, "김성기", "유방암", "2주 간격", True, items)
+        
+        items = [{"제품": "마시는 것", "용량": "280ml", "수량": 28}, {"제품": "시원한 것", "용량": "280ml", "수량": 28}, {"제품": "커드 시원한 것", "용량": "280ml", "수량": 28}, {"제품": "인삼 사이다", "용량": "280ml", "수량": 14}, {"제품": "인삼대사체(PAGI) 항암용", "용량": "50ml", "수량": 14}]
+        add_patient(db, "최은찬", "유방암", "2주 간격", True, items)
+        
+        items = [{"제품": "혼합 [Ex.P]", "용량": "150ml", "수량": 14, "타입": "혼합"}, {"제품": "혼합 [R.P]", "용량": "150ml", "수량": 14, "타입": "혼합"}, {"제품": "혼합 [Edf.P]", "용량": "150ml", "수량": 14, "타입": "혼합"}, {"제품": "혼합 [P.P]", "용량": "150ml", "수량": 14, "타입": "혼합"}, {"제품": "커드 시원한 것", "용량": "280ml", "수량": 14}, {"제품": "PAGI 희석액", "용량": "50ml", "수량": 14}]
+        add_patient(db, "하혜숙", "유방암", "2주 간격", True, items)
+        st.session_state.patient_db = db
+
+    if 'recipe_db' not in st.session_state:
+        r_db = {}
+        r_db["계란커드 스타터 [혼합]"] = {"desc": "대사체 단순 혼합", "batch_size": 9, "materials": {"개망초 대사체": 8, "아카시아잎 대사체": 1}}
+        r_db["계란커드 스타터 [합제]"] = {"desc": "원물 8:1 혼합 대사 (내년 5월~)", "batch_size": 9, "materials": {"개망초꽃(원물)": 8, "아카시아잎(원물)": 1, "EX": 36}}
+        r_db["혼합 [E.R.P.V.P]"] = {"desc": "6배수 혼합/14병", "batch_size": 14, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 12, "송이대사체 (50ml)": 6, "장미꽃 대사체 (50ml)": 6, "Vitamin C (3000mg)": 14, "SiO2 (1ml)": 14, "EX": 900}}
+        r_db["혼합 [P.V.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 1, "Vitamin C (3000mg)": 1, "EX": 100}}
+        r_db["혼합 [P.P.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
+        r_db["혼합 [Ex.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 100}}
+        r_db["혼합 [R.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"장미꽃 대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "인삼사이다": 50}}
+        r_db["혼합 [Edf.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"개망초(EDF) (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "인삼사이다": 50}}
+        r_db["혼합 [P.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
+        st.session_state.recipe_db = r_db
+
+init_session_state()
+
+# 4. 계산기 모드
+st.title("🏥 엘랑비탈 정기배송 v.4.5")
+col1, col2 = st.columns(2)
+
+# 날짜 변경 시 캘린더 월 자동 동기화 함수
+def on_date_change():
+    if 'target_date' in st.session_state:
+        st.session_state.view_month = st.session_state.target_date.month
+
+# 기본값 설정
+with col1: 
+    target_date = st.date_input("발송일", value=datetime.now(KST), key="target_date", on_change=on_date_change)
+
+# 날짜 기반 주차 계산
+def get_week_info(date_obj):
+    month = date_obj.month
+    week = (date_obj.day - 1) // 7 + 1
+    return f"{month}월 {week}주"
+
+week_str = get_week_info(target_date)
+month_str = f"{target_date.month}월"
+
+st.divider()
+
+db = st.session_state.patient_db
+sel_p = {}
+
+c1, c2 = st.columns(2)
+with c1:
+    st.subheader("🚛 남양주 / 기타")
+    for k, v in db.items():
+        if v['group'] != "유방암":
+            if st.checkbox(k, v['default'], help=v['note']): sel_p[k] = v['items']
+with c2:
+    st.subheader("🚛 유방암")
+    for k, v in db.items():
+        if v['group'] == "유방암":
+            if st.checkbox(k, v['default'], help=v['note']): sel_p[k] = v['items']
+
+st.divider()
+t1, t2, t3, t4, t5, t6 = st.tabs(["🏷️ 라벨", "🎁 장연구원", "🧪 한책임", "📊 원자재", f"🏭 생산 관리 ({week_str})", f"🗓️ 연간 일정 ({month_str})"])
+
+# Tab 1~4: 기존 로직 유지
+with t1:
+    st.header("🖨️ 라벨 출력")
+    if not sel_p: st.warning("환자를 선택하세요")
+    else:
+        cols = st.columns(2)
+        for i, (name, items) in enumerate(sel_p.items()):
+            with cols[i%2]:
+                with st.container(border=True):
+                    st.markdown(f"### 🧊 {name}")
+                    st.caption(f"📅 {target_date.strftime('%Y-%m-%d')}")
+                    st.markdown("---")
+                    for x in items:
+                        chk = "✅" if "혼합" in str(x['제품']) else "□"
+                        note = f"👉 {x['비고']}" if "비고" in x else ""
+                        st.markdown(f"**{chk} {x['제품']}** {x['수량']}개 ({x['용량']}){note}")
+                    st.markdown("---")
+                    st.write("🏥 **엘랑비탈바이오**")
+
+with t2:
+    st.header("🎁 장연구원 (개별 포장)")
+    tot = {}
+    for items in sel_p.values():
+        for x in items:
+            if "혼합" not in str(x['제품']):
+                k = f"{x['제품']} ({x['용량']})"
+                tot[k] = tot.get(k, 0) + x['수량']
+    df = pd.DataFrame(list(tot.items()), columns=["제품", "수량"]).sort_values("수량", ascending=False)
+    st.dataframe(df, use_container_width=True)
+
+with t3:
+    st.header("🧪 한책임 (혼합 제조)")
+    req = {}
+    for items in sel_p.values():
+        for x in items:
+            if "혼합" in str(x['제품']): req[x['제품']] = req.get(x['제품'], 0) + x['수량']
+    recipes = st.session_state.recipe_db
+    total_mat = {}
+    if not req: st.info("혼합 제품 없음")
+    else:
+        for p, q in req.items():
+            if p in recipes:
+                with st.expander(f"📌 {p}", expanded=True):
+                    c1, c2 = st.columns([1,2])
+                    in_q = c1.number_input(f"{p} 수량", 0, value=q, key=f"{p}_{q}")
+                    r = recipes[p]
+                    c2.markdown(f"**{r['desc']}**")
+                    ratio = in_q / r['batch_size'] if r['batch_size'] > 1 else in_q
+                    for m, mq in r['materials'].items():
+                        if isinstance(mq, (int, float)):
+                            calc = mq * ratio
+                            if "(50ml)" in m:
+                                vol = calc * 50
+                                c2.write(f"- {m}: **{calc:g}** (50*{calc:g}={vol:g} ml)")
+                            elif "EX" in m or "사이다" in m:
+                                c2.write(f"- {m}: **{calc:g} ml**")
+                            else:
+                                c2.write(f"- {m}: **{calc:g} 개**")
+                            total_mat[m] = total_mat.get(m, 0) + calc
+                        else: c2.write(f"- {m}: {mq}")
+    st.divider()
+    st.subheader("∑ 재료 총합")
+    for k, v in sorted(total_mat.items(), key=lambda x: x[1], reverse=True):
+        if "PAGI" in k or "인삼대사체" in k:
+            vol_ml = v * 50
+            st.info(f"💧 **{k}**: {v:g}개 (총 {vol_ml:,.0f} ml)")
+        elif "사이다" in k:
+            bottles = v / 300
+            st.info(f"🥤 **{k}**: {v:,.0f} ml (약 {bottles:.1f}병)")
+        elif "EX" in k:
+            st.info(f"🛢️ **{k}**: {v:,.0f} ml (약 {v/1000:.1f} L)")
+        else:
+            st.success(f"📦 **{k}**: {v:g} 개")
+
+with t4:
+    st.header("📊 원자재 예측")
+    curd_pure = 0
+    curd_cool = 0
+    for items in sel_p.values():
+        for x in items:
+            if x['제품'] == "커드": curd_pure += x['수량']
+            elif x['제품'] == "커드 시원한 것": curd_cool += x['수량']
+    need_from_cool = curd_cool * 40
+    need_from_pure = curd_pure * 150
+    total_kg = (need_from_cool + need_from_pure) / 1000
+    milk = (total_kg / 9) * 16
+    c1, c2 = st.columns(2)
+    c1.metric("커드 시원한 것 (40g)", f"{curd_cool}개")
+    c2.metric("커드 (150g)", f"{curd_pure}개")
+    st.divider()
+    st.info(f"🧀 **총 필요 커드:** 약 {total_kg:.2f} kg")
+    st.success(f"🥛 **필요 우유:** 약 {math.ceil(milk)}통")
+
+with t5:
+    st.header(f"🏭 생산 관리 ({week_str})")
+    
+    sim_weeks = [week_str]
+    next_week_date = target_date + timedelta(weeks=1)
+    next2_week_date = target_date + timedelta(weeks=2)
+    sim_weeks.append(f"{next_week_date.month}월 {get_week_info(next_week_date).split(' ')[1]} (다음주)")
+    sim_weeks.append(f"{next2_week_date.month}월 {get_week_info(next2_week_date).split(' ')[1]} (다다음주)")
+    
+    sel_sim_week = st.selectbox("📅 작업 주차 선택 (시뮬레이션)", sim_weeks)
+    
+    st.markdown("---")
+    st.markdown("#### 1️⃣ 원재료 투입")
+    col_in1, col_in2, col_in3 = st.columns(3)
+    with col_in1: in_kimchi = st.number_input("무염김치 (봉지)", 0, value=1)
+    with col_in2: in_milk_reg = st.number_input("일반커드 우유 (통)", 0, value=16)
+    with col_in3: in_milk_egg = st.number_input("계란커드 우유 (통)", 0, value=0)
+    
+    prod_cool_cnt = in_kimchi * 215 
+    prod_cool_kg = prod_cool_cnt * 0.274 
+    prod_reg_curd_kg = in_milk_reg * 2.3 * 0.217 
+    
+    total_milk_egg_kg = in_milk_egg * 2.3
+    req_egg_kg = total_milk_egg_kg / 4
+    req_egg_cnt = int(req_egg_kg / 0.045)
+    req_cool_for_egg = total_milk_egg_kg / 4 
+    
+    prod_egg_curd_kg = total_milk_egg_kg * 0.22 
+    
+    # [수정됨] 변수명 오타 수정 (out_egg_cnt -> prod_egg_curd_cnt)
+    prod_egg_curd_cnt = int(prod_egg_curd_kg * 1000 / 150)
+    
+    req_cool_for_curd = prod_reg_curd_kg * 5.5 
+    total_mix_kg = prod_reg_curd_kg + req_cool_for_curd
+    mix_cnt = int(total_mix_kg * 1000 / 260)
+    
+    remain_cool_kg = prod_cool_kg - req_cool_for_curd - req_cool_for_egg
+    remain_cool_cnt = int(remain_cool_kg * 1000 / 274)
+
+    st.markdown("---")
+    st.markdown("#### 2️⃣ 중간 생산물 & 배분 (Weight)")
+    c_mid1, c_mid2, c_mid3 = st.columns(3)
+    with c_mid1:
+        st.info("🥬 **시원한 것 (총생산)**")
+        st.metric("총 중량", f"{prod_cool_kg:.1f} kg")
+        st.caption(f"무염김치 {in_kimchi}봉 기준")
+    with c_mid2:
+        st.warning("🥣 **중간 투입 (소모)**")
+        st.write(f"- 커드 혼합용: **{req_cool_for_curd:.1f} kg**")
+        st.write(f"- 계란커드용: **{req_cool_for_egg:.1f} kg**")
+        st.caption(f"※ 일반커드: {prod_reg_curd_kg:.1f} kg")
+    with c_mid3:
+        st.success("🥚 **계란 커드 (재료 계산)**")
+        st.write(f"- 우유: **{total_milk_egg_kg:.1f} kg** ({in_milk_egg}통)")
+        st.write(f"- 계란: **{req_egg_kg:.1f} kg** (약 {req_egg_cnt}개)")
+        st.write(f"- 스타터: **개망초:아카시아(8:1)**")
+        st.write(f"- 시원한 것: **{req_cool_for_egg:.1f} kg** (투입됨)")
+        
+    st.markdown("---")
+    st.markdown("#### 3️⃣ 최종 완제품 (Final Count)")
+    c_fin1, c_fin2, c_fin3 = st.columns(3)
+    with c_fin1:
+        st.info("🧴 **시원한 것 (최종 잔여)**")
+        if remain_cool_kg < 0:
+            st.metric("상태", "🚨 재료 부족")
+            st.error(f"{abs(remain_cool_kg):.1f} kg 부족합니다!")
+        else:
+            st.metric("생산 수량 (274g)", f"{remain_cool_cnt} 병")
+            st.caption(f"잔여 {remain_cool_kg:.1f} kg")
+    with c_fin2:
+        st.error("🥣 **커드 시원한 것**")
+        st.metric("생산 수량 (260g)", f"{mix_cnt} 병")
+        st.caption(f"총 {total_mix_kg:.1f} kg")
+    with c_fin3:
+        st.warning("🥚 **계란 커드**")
+        # [수정됨] 여기를 수정했습니다!
+        st.metric("
