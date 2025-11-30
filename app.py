@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 # 1. 페이지 설정
 st.set_page_config(page_title="엘랑비탈 정기배송", page_icon="🏥", layout="wide")
 
-# [중요] 한국 시간(KST) 설정 (맨 위로 이동)
+# [중요] 한국 시간(KST) 설정
 KST = timezone(timedelta(hours=9))
 
 # 2. 보안 설정
@@ -122,12 +122,11 @@ init_session_state()
 st.title("🏥 엘랑비탈 정기배송 v.4.5")
 col1, col2 = st.columns(2)
 
-# 날짜 변경 시 캘린더 월 자동 동기화 함수
+# 날짜 변경 시 캘린더 월 자동 동기화
 def on_date_change():
     if 'target_date' in st.session_state:
         st.session_state.view_month = st.session_state.target_date.month
 
-# 기본값 설정
 with col1: 
     target_date = st.date_input("발송일", value=datetime.now(KST), key="target_date", on_change=on_date_change)
 
@@ -160,7 +159,6 @@ with c2:
 st.divider()
 t1, t2, t3, t4, t5, t6 = st.tabs(["🏷️ 라벨", "🎁 장연구원", "🧪 한책임", "📊 원자재", f"🏭 생산 관리 ({week_str})", f"🗓️ 연간 일정 ({month_str})"])
 
-# Tab 1~4: 기존 로직 유지
 with t1:
     st.header("🖨️ 라벨 출력")
     if not sel_p: st.warning("환자를 선택하세요")
@@ -282,7 +280,7 @@ with t5:
     
     prod_egg_curd_kg = total_milk_egg_kg * 0.22 
     
-    # [수정됨] 변수명 오타 수정 (out_egg_cnt -> prod_egg_curd_cnt)
+    # [수정됨] 올바른 변수명 사용
     prod_egg_curd_cnt = int(prod_egg_curd_kg * 1000 / 150)
     
     req_cool_for_curd = prod_reg_curd_kg * 5.5 
@@ -310,7 +308,6 @@ with t5:
         st.write(f"- 계란: **{req_egg_kg:.1f} kg** (약 {req_egg_cnt}개)")
         st.write(f"- 스타터: **개망초:아카시아(8:1)**")
         st.write(f"- 시원한 것: **{req_cool_for_egg:.1f} kg** (투입됨)")
-        
     st.markdown("---")
     st.markdown("#### 3️⃣ 최종 완제품 (Final Count)")
     c_fin1, c_fin2, c_fin3 = st.columns(3)
@@ -328,5 +325,43 @@ with t5:
         st.caption(f"총 {total_mix_kg:.1f} kg")
     with c_fin3:
         st.warning("🥚 **계란 커드**")
-        # [수정됨] 여기를 수정했습니다!
-        st.metric("
+        st.metric("생산 수량 (150g)", f"{prod_egg_curd_cnt} 개")
+        st.caption(f"총 {prod_egg_curd_kg:.1f} kg")
+
+with t6:
+    st.header(f"🗓️ 연간 생산 캘린더 ({st.session_state.view_month}월)")
+    sel_month = st.selectbox("월 선택", list(range(1, 13)), key="view_month")
+    current_sched = st.session_state.schedule_db[sel_month]
+    
+    st.subheader(f"📌 {current_sched['title']}")
+    col_main, col_note = st.columns([2, 1])
+    
+    with col_main:
+        st.success("🌱 **주요 생산 품목**")
+        to_remove = st.multiselect("삭제할 항목 선택", current_sched['main'])
+        if st.button("선택 항목 삭제", type="secondary"):
+            for item in to_remove:
+                st.session_state.schedule_db[sel_month]['main'].remove(item)
+            st.rerun()
+            
+        for item in current_sched['main']:
+            st.write(f"- {item}")
+        
+        with st.expander("➕ 일정 추가하기"):
+            with st.form(f"add_sched_{sel_month}"):
+                new_task = st.text_input("내용 입력")
+                if st.form_submit_button("추가"):
+                    if new_task:
+                        st.session_state.schedule_db[sel_month]['main'].append(new_task)
+                        st.rerun()
+
+    with col_note:
+        st.info("💡 **비고 / 주의사항**")
+        st.write(current_sched['note'])
+        
+        with st.expander("📝 비고 수정"):
+            with st.form(f"edit_note_{sel_month}"):
+                new_note = st.text_area("내용 수정", value=current_sched['note'])
+                if st.form_submit_button("저장"):
+                    st.session_state.schedule_db[sel_month]['note'] = new_note
+                    st.rerun()
