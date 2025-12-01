@@ -24,7 +24,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.5.2 (DB연동)")
+            st.title("🔒 엘랑비탈 ERP v.5.2.1 (DB연동)")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -42,7 +42,14 @@ def load_data_from_sheet():
     try:
         # 스트림릿 시크릿에서 열쇠 꺼내기
         secrets = st.secrets["gcp_service_account"]
-        creds = Credentials.from_service_account_info(secrets, scopes=["https://www.googleapis.com/auth/spreadsheets"])
+        
+        # [수정됨] 권한 범위(Scope)에 'drive' 추가! (이게 빠져서 에러남)
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        
+        creds = Credentials.from_service_account_info(secrets, scopes=scopes)
         client = gspread.authorize(creds)
         
         # 엑셀 파일 열기
@@ -53,7 +60,7 @@ def load_data_from_sheet():
         db = {}
         for row in data:
             name = row['이름']
-            if not name: continue # 빈 줄 건너뛰기
+            if not name: continue
             
             # 주문내역 파싱 (예: "시원한 것:21, 커드:7")
             items_list = []
@@ -61,10 +68,11 @@ def load_data_from_sheet():
             for item in raw_items:
                 if ':' in item:
                     p_name, p_qty = item.split(':')
+                    # 용량이 명시되지 않은 경우 기본값 처리 로직 필요 시 추가
                     items_list.append({
                         "제품": p_name.strip(), 
                         "수량": int(p_qty.strip()),
-                        "용량": "표준" # 엑셀에 용량이 없으면 기본값
+                        "용량": "표준" 
                     })
             
             db[name] = {
@@ -88,10 +96,15 @@ def init_session_state():
     if 'view_month' not in st.session_state:
         st.session_state.view_month = st.session_state.target_date.month
 
-    # (3) 환자 DB (구글 시트에서 불러오기!)
+    # (3) 환자 DB (구글 시트 연동)
     if 'patient_db' not in st.session_state:
-        with st.spinner('구글 장부에서 데이터를 가져오는 중...'):
-            st.session_state.patient_db = load_data_from_sheet()
+        # 데이터 로드 시도
+        loaded_db = load_data_from_sheet()
+        if loaded_db:
+             st.session_state.patient_db = loaded_db
+        else:
+             # 로드 실패 시 빈 딕셔너리 (에러 메시지는 위에서 출력됨)
+             st.session_state.patient_db = {}
 
     # (4) 연간 일정 DB
     if 'schedule_db' not in st.session_state:
@@ -137,7 +150,7 @@ def init_session_state():
 init_session_state()
 
 # 5. 메인 화면
-st.title("🏥 엘랑비탈 ERP v.5.2 (Live DB)")
+st.title("🏥 엘랑비탈 ERP v.5.2.1 (Live DB)")
 col1, col2 = st.columns(2)
 
 def on_date_change():
@@ -194,7 +207,7 @@ with c2:
 st.divider()
 t1, t2, t3, t4, t5, t6, t7 = st.tabs(["🏷️ 라벨", "🎁 장연구원", "🧪 한책임", "📊 원자재", f"🏭 생산 관리 ({week_str})", f"🗓️ 연간 일정 ({month_str})", "💊 임상/처방 관리"])
 
-# [이하 탭 로직은 v.5.1.1과 동일하므로 그대로 유지 - 생략 없이 전체 포함]
+# [이하 탭 로직은 기존 v.5.x와 동일하므로 전체 유지]
 with t1:
     st.header("🖨️ 라벨 출력")
     if not sel_p: st.warning("환자를 선택하세요")
@@ -208,7 +221,6 @@ with t1:
                     st.markdown("---")
                     for x in items:
                         chk = "✅" if "혼합" in str(x['제품']) else "□"
-                        # 엑셀에서 불러온 데이터는 '비고'가 없을 수 있음
                         note = f"👉 {st.session_state.patient_db[name]['note']}" if 'note' in st.session_state.patient_db[name] and st.session_state.patient_db[name]['note'] else ""
                         st.markdown(f"**{chk} {x['제품']}** {x['수량']}개 ({x['용량']})")
                     st.markdown("---")
@@ -331,8 +343,8 @@ with t5:
         st.metric("총 중량", f"{prod_cool_kg:.1f} kg")
         st.caption(f"무염김치 {in_kimchi}봉 기준")
     with c_mid2:
-        st.warning("🥣 **중간 투입 (소모 시원한 것)**")
-        st.metric("소모량", f"{req_cool_for_curd:.1f} kg")
+        st.warning("🥣 **중간 투입 (소모)**")
+        st.write(f"- 커드 혼합용: **{req_cool_for_curd:.1f} kg**")
         st.caption(f"※ 일반커드: {prod_reg_curd_kg:.1f} kg")
     with c_mid3:
         st.success("🥚 **계란 커드 (재료 계산)**")
@@ -342,6 +354,7 @@ with t5:
         st.write(f"🧪 **스타터 ({egg_starter_pct}%)**: **{req_starter_total:.1f} kg**")
         st.caption(f"└ 개망초(8): {req_starter_daisy:.2f} kg")
         st.caption(f"└ 아카시아(1): {req_starter_acacia:.2f} kg")
+        
     st.markdown("---")
     st.markdown("#### 3️⃣ 최종 완제품 (Final Count)")
     c_fin1, c_fin2, c_fin3 = st.columns(3)
@@ -394,14 +407,13 @@ with t5:
             st.metric("월간 케어", f"{capacity_person} 명")
             st.caption("1인 1일 1개 섭취 기준")
 
-# Tab 6 & 7 (기존 로직 유지)
 with t6:
     st.header(f"🗓️ 연간 생산 캘린더 ({st.session_state.view_month}월)")
     sel_month = st.selectbox("월 선택", list(range(1, 13)), key="view_month")
     current_sched = st.session_state.schedule_db[sel_month]
     st.subheader(f"📌 {current_sched['title']}")
-    c_main, c_note = st.columns([2, 1])
-    with c_main:
+    col_main, col_note = st.columns([2, 1])
+    with col_main:
         st.success("🌱 **주요 생산 품목**")
         to_remove = st.multiselect("삭제할 항목 선택", current_sched['main'])
         if st.button("선택 항목 삭제", type="secondary"):
@@ -417,7 +429,7 @@ with t6:
                     if new_task:
                         st.session_state.schedule_db[sel_month]['main'].append(new_task)
                         st.rerun()
-    with c_note:
+    with col_note:
         st.info("💡 **비고 / 주의사항**")
         st.write(current_sched['note'])
         with st.expander("📝 비고 수정"):
