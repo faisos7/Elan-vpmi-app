@@ -24,7 +24,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.5.6")
+            st.title("🔒 엘랑비탈 ERP v.5.6.2")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -63,14 +63,12 @@ def load_data_from_sheet():
                         "용량": "표준" 
                     })
             
-            # [v.5.6] 회차 정보 읽기 (없으면 1로 기본값)
-            round_num = row.get('회차')
-            if not round_num:
-                round_num = 1
+            round_val = row.get('회차')
+            if round_val is None or str(round_val).strip() == "":
+                round_num = 1 
             else:
                 try:
-                    # 숫자만 추출하거나 그대로 사용
-                    round_num = int(str(round_num).replace('회', '').replace('주', '').strip())
+                    round_num = int(str(round_val).replace('회', '').replace('주', '').strip())
                 except:
                     round_num = 1
 
@@ -79,21 +77,20 @@ def load_data_from_sheet():
                 "note": row['비고'],
                 "default": True if str(row['기본발송']).upper() == 'O' else False,
                 "items": items_list,
-                "round": round_num # 회차 정보 저장
+                "round": round_num
             }
         return db
     except Exception as e:
         st.error(f"❌ 데이터 로딩 실패: {e}")
         return {}
 
-# 4. 데이터 초기화 (기본값 설정 등)
+# 4. 데이터 초기화
 def init_session_state():
     if 'target_date' not in st.session_state:
         st.session_state.target_date = datetime.now(KST)
     if 'view_month' not in st.session_state:
         st.session_state.view_month = st.session_state.target_date.month
 
-    # 환자 DB 로드
     if 'patient_db' not in st.session_state:
         loaded_db = load_data_from_sheet()
         if loaded_db:
@@ -101,7 +98,6 @@ def init_session_state():
         else:
             st.session_state.patient_db = {} 
 
-    # 연간 일정 DB
     if 'schedule_db' not in st.session_state:
         st.session_state.schedule_db = {
             1: {"title": "1월 (JAN)", "main": ["동백꽃 (대사/필터링)", "인삼사이다 (병입)", "유기농 우유 커드"], "note": "동백꽃 pH 3.8~4.0 도달 시 종료"},
@@ -118,7 +114,6 @@ def init_session_state():
             12: {"title": "12월 (DEC)", "main": ["동백꽃 (채취 시작)", "메주콩(백태)", "한 해 마감"], "note": "동백꽃 1:6, 1:9, 1:12 비율 실험"}
         }
 
-    # 레시피 DB
     if 'recipe_db' not in st.session_state:
         r_db = {}
         r_db["계란커드 스타터 [혼합]"] = {"desc": "대사체 단순 혼합", "batch_size": 9, "materials": {"개망초 대사체": 8, "아카시아잎 대사체": 1}}
@@ -132,7 +127,6 @@ def init_session_state():
         r_db["혼합 [P.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
         st.session_state.recipe_db = r_db
     
-    # 처방전 DB
     if 'regimen_db' not in st.session_state:
         st.session_state.regimen_db = {
             "울산 자궁근종": """1. 아침: 장미꽃 대사체 + 생수 350ml (격일)
@@ -145,7 +139,7 @@ def init_session_state():
 init_session_state()
 
 # 5. 메인 화면
-st.title("🏥 엘랑비탈 ERP v.5.6 (Live DB)")
+st.title("🏥 엘랑비탈 ERP v.5.6.2 (Live DB)")
 col1, col2 = st.columns(2)
 
 def on_date_change():
@@ -180,10 +174,10 @@ with c1:
     if db:
         for k, v in db.items():
             if v['group'] == "매주 발송":
-                # [v.5.6] 회차 표시 기능 추가
-                round_info = f" ({v['round']}/12회)" if 'round' in v else ""
-                # 12회 이상이면 경고 표시
-                if v.get('round', 0) > 12: round_info += " 🚨"
+                # 매주 발송 그룹: 기준 12회
+                round_num = v.get('round', 0)
+                round_info = f" ({round_num}/12회)" 
+                if round_num > 12: round_info += " 🚨"
                 
                 note_display = f" 📌{v['note']}" if v['note'] else ""
                 if st.checkbox(f"{k}{round_info}{note_display}", v['default']): 
@@ -196,8 +190,10 @@ with c2:
     if db:
         for k, v in db.items():
             if v['group'] == "격주 발송" or v['group'] == "유방암" or v['group'] == "울산":
-                round_info = f" ({v['round']}/12회)" if 'round' in v else ""
-                if v.get('round', 0) > 12: round_info += " 🚨"
+                # [v.5.6.2 수정] 격주 발송 그룹: 기준 6회
+                round_num = v.get('round', 0)
+                round_info = f" ({round_num}/6회)"
+                if round_num > 6: round_info += " 🚨"
                 
                 note_display = f" 📌{v['note']}" if v['note'] else ""
                 if st.checkbox(f"{k}{round_info}{note_display}", v['default']): 
@@ -215,9 +211,8 @@ with t1:
         for i, (name, items) in enumerate(sel_p.items()):
             with cols[i%2]:
                 with st.container(border=True):
-                    # [v.5.6] 라벨에도 회차 표시 (선택 사항 - 원하시면 제거 가능)
-                    round_num = st.session_state.patient_db[name].get('round', '')
-                    round_str = f" [{round_num}회차]" if round_num else ""
+                    round_num = st.session_state.patient_db[name].get('round', 0)
+                    round_str = f" [{round_num}회차]" 
                     
                     st.markdown(f"### 🧊 {name}{round_str}")
                     st.caption(f"📅 {target_date.strftime('%Y-%m-%d')}")
@@ -230,7 +225,7 @@ with t1:
                     st.markdown("---")
                     st.write("🏥 **엘랑비탈바이오**")
 
-# Tab 2~7 (기존 유지)
+# Tab 2~7 (기존 로직 유지)
 with t2:
     st.header("🎁 장연구원 (개별 포장)")
     tot = {}
