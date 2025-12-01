@@ -24,7 +24,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.5.5.1")
+            st.title("🔒 엘랑비탈 ERP v.5.6")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -34,9 +34,7 @@ def check_password():
 if not check_password():
     st.stop()
 
-# ----------------------------------------------------
-# 3. 구글 시트 데이터 로딩 (스마트 용량 감지 탑재) 🚀
-# ----------------------------------------------------
+# 3. 구글 시트 데이터 로딩
 @st.cache_data(ttl=60) 
 def load_data_from_sheet():
     try:
@@ -47,25 +45,6 @@ def load_data_from_sheet():
         sheet = client.open("vpmi_data").sheet1
         data = sheet.get_all_records()
         
-        # [신규] 제품별 기본 용량 사전 (DB)
-        default_caps = {
-            "시원한 것": "280ml",
-            "마시는 것": "280ml",
-            "커드 시원한 것": "280ml",
-            "인삼 사이다": "280ml",
-            "EX": "280ml",
-            "인삼대사체(PAGI)": "50ml",
-            "인삼대사체(PAGI) 항암용": "50ml",
-            "인삼대사체(PAGI) 뇌질환용": "50ml",
-            "개망초(EDF)": "50ml",
-            "장미꽃 대사체": "50ml",
-            "애기똥풀 대사체": "50ml",
-            "송이 대사체": "50ml",
-            "표고버섯 대사체": "50ml",
-            "커드": "150g",
-            "계란 커드": "150g"
-        }
-
         db = {}
         for row in data:
             name = row['이름']
@@ -77,51 +56,52 @@ def load_data_from_sheet():
                 if ':' in item:
                     p_name, p_qty = item.split(':')
                     clean_name = p_name.strip()
-                    
-                    # 명칭 자동 보정
                     if clean_name == "PAGI 희석액": clean_name = "인삼대사체(PAGI) 항암용"
-                    
-                    # [수정] 용량 자동 매칭 (없으면 빈칸)
-                    cap = default_caps.get(clean_name, "")
-                    
                     items_list.append({
                         "제품": clean_name, 
                         "수량": int(p_qty.strip()),
-                        "용량": cap 
+                        "용량": "표준" 
                     })
             
+            # [v.5.6] 회차 정보 읽기 (없으면 1로 기본값)
+            round_num = row.get('회차')
+            if not round_num:
+                round_num = 1
+            else:
+                try:
+                    # 숫자만 추출하거나 그대로 사용
+                    round_num = int(str(round_num).replace('회', '').replace('주', '').strip())
+                except:
+                    round_num = 1
+
             db[name] = {
                 "group": row['그룹'],
                 "note": row['비고'],
                 "default": True if str(row['기본발송']).upper() == 'O' else False,
-                "items": items_list
+                "items": items_list,
+                "round": round_num # 회차 정보 저장
             }
         return db
     except Exception as e:
         st.error(f"❌ 데이터 로딩 실패: {e}")
         return {}
 
-# 4. 데이터 초기화
-def add_patient(db, name, group, note, default, items):
-    db[name] = {"group": group, "note": note, "default": default, "items": items}
-
+# 4. 데이터 초기화 (기본값 설정 등)
 def init_session_state():
     if 'target_date' not in st.session_state:
         st.session_state.target_date = datetime.now(KST)
     if 'view_month' not in st.session_state:
         st.session_state.view_month = st.session_state.target_date.month
 
-    # (3) 환자 DB (구글 시트 우선)
+    # 환자 DB 로드
     if 'patient_db' not in st.session_state:
         loaded_db = load_data_from_sheet()
         if loaded_db:
             st.session_state.patient_db = loaded_db
         else:
-            # 백업 데이터 (시트 연결 전용)
-            db = {}
-            st.session_state.patient_db = db # (백업 데이터 생략 - 엑셀 연동이 메인이므로)
+            st.session_state.patient_db = {} 
 
-    # (4) 연간 일정 DB
+    # 연간 일정 DB
     if 'schedule_db' not in st.session_state:
         st.session_state.schedule_db = {
             1: {"title": "1월 (JAN)", "main": ["동백꽃 (대사/필터링)", "인삼사이다 (병입)", "유기농 우유 커드"], "note": "동백꽃 pH 3.8~4.0 도달 시 종료"},
@@ -138,19 +118,7 @@ def init_session_state():
             12: {"title": "12월 (DEC)", "main": ["동백꽃 (채취 시작)", "메주콩(백태)", "한 해 마감"], "note": "동백꽃 1:6, 1:9, 1:12 비율 실험"}
         }
 
-    if 'product_list' not in st.session_state:
-        plist = [
-            "시원한 것", "마시는 것", "커드 시원한 것", "커드", "계란 커드", "EX",
-            "인삼대사체(PAGI) 항암용", "인삼대사체(PAGI) 뇌질환용",
-            "표고버섯 대사체", "개망초(EDF)", "장미꽃 대사체",
-            "애기똥풀 대사체", "인삼 사이다", "송이 대사체",
-            "PAGI 희석액", "Vitamin C", "SiO2", "계란커드 스타터",
-            "혼합 [E.R.P.V.P]", "혼합 [P.V.E]", "혼합 [P.P.E]",
-            "혼합 [Ex.P]", "혼합 [R.P]", "혼합 [Edf.P]", "혼합 [P.P]"
-        ]
-        st.session_state.product_list = plist
-
-    # (5) 레시피 DB
+    # 레시피 DB
     if 'recipe_db' not in st.session_state:
         r_db = {}
         r_db["계란커드 스타터 [혼합]"] = {"desc": "대사체 단순 혼합", "batch_size": 9, "materials": {"개망초 대사체": 8, "아카시아잎 대사체": 1}}
@@ -164,7 +132,7 @@ def init_session_state():
         r_db["혼합 [P.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
         st.session_state.recipe_db = r_db
     
-    # (6) 처방전 DB
+    # 처방전 DB
     if 'regimen_db' not in st.session_state:
         st.session_state.regimen_db = {
             "울산 자궁근종": """1. 아침: 장미꽃 대사체 + 생수 350ml (격일)
@@ -177,7 +145,7 @@ def init_session_state():
 init_session_state()
 
 # 5. 메인 화면
-st.title("🏥 엘랑비탈 ERP v.5.5.1 (Live DB)")
+st.title("🏥 엘랑비탈 ERP v.5.6 (Live DB)")
 col1, col2 = st.columns(2)
 
 def on_date_change():
@@ -212,19 +180,27 @@ with c1:
     if db:
         for k, v in db.items():
             if v['group'] == "매주 발송":
-                note_display = f" ({v['note']})" if v['note'] else ""
-                if st.checkbox(f"{k}{note_display}", v['default']): 
+                # [v.5.6] 회차 표시 기능 추가
+                round_info = f" ({v['round']}/12회)" if 'round' in v else ""
+                # 12회 이상이면 경고 표시
+                if v.get('round', 0) > 12: round_info += " 🚨"
+                
+                note_display = f" 📌{v['note']}" if v['note'] else ""
+                if st.checkbox(f"{k}{round_info}{note_display}", v['default']): 
                     sel_p[k] = v['items']
     else:
-        st.info("구글 시트에 데이터를 입력해주세요.")
+        st.info("데이터 로딩 중...")
 
 with c2:
     st.subheader("🚚 격주 발송")
     if db:
         for k, v in db.items():
             if v['group'] == "격주 발송" or v['group'] == "유방암" or v['group'] == "울산":
-                note_display = f" ({v['note']})" if v['note'] else ""
-                if st.checkbox(f"{k}{note_display}", v['default']): 
+                round_info = f" ({v['round']}/12회)" if 'round' in v else ""
+                if v.get('round', 0) > 12: round_info += " 🚨"
+                
+                note_display = f" 📌{v['note']}" if v['note'] else ""
+                if st.checkbox(f"{k}{round_info}{note_display}", v['default']): 
                     sel_p[k] = v['items']
 
 st.divider()
@@ -239,29 +215,28 @@ with t1:
         for i, (name, items) in enumerate(sel_p.items()):
             with cols[i%2]:
                 with st.container(border=True):
-                    st.markdown(f"### 🧊 {name}")
+                    # [v.5.6] 라벨에도 회차 표시 (선택 사항 - 원하시면 제거 가능)
+                    round_num = st.session_state.patient_db[name].get('round', '')
+                    round_str = f" [{round_num}회차]" if round_num else ""
+                    
+                    st.markdown(f"### 🧊 {name}{round_str}")
                     st.caption(f"📅 {target_date.strftime('%Y-%m-%d')}")
                     st.markdown("---")
                     for x in items:
                         chk = "✅" if "혼합" in str(x['제품']) else "□"
-                        # [핵심] 라벨 표시명 정리 ('항암용' 제거)
                         display_prod = x['제품'].replace(" 항암용", "")
-                        
-                        # [핵심] 용량 표시 (있으면 표시, 없으면 생략)
                         vol_str = f" ({x['용량']})" if x['용량'] else ""
-                        
                         st.markdown(f"**{chk} {display_prod}** {x['수량']}개{vol_str}")
                     st.markdown("---")
                     st.write("🏥 **엘랑비탈바이오**")
 
-# Tab 2~7 (기존 로직 유지)
+# Tab 2~7 (기존 유지)
 with t2:
     st.header("🎁 장연구원 (개별 포장)")
     tot = {}
     for items in sel_p.values():
         for x in items:
             if "혼합" not in str(x['제품']):
-                # 여기서는 '항암용' 같은 전체 이름과 용량 다 보여줌
                 k = f"{x['제품']} {x['용량']}" if x['용량'] else x['제품']
                 tot[k] = tot.get(k, 0) + x['수량']
     df = pd.DataFrame(list(tot.items()), columns=["제품", "수량"]).sort_values("수량", ascending=False)
