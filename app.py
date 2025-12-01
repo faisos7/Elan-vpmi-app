@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 import math
 from datetime import datetime, timedelta, timezone
-import gspread
-from google.oauth2.service_account import Credentials
 
 # 1. 페이지 설정
 st.set_page_config(page_title="엘랑비탈 정기배송", page_icon="🏥", layout="wide")
@@ -24,7 +22,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.5.2.1 (DB연동)")
+            st.title("🔒 엘랑비탈 ERP v.5.3")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -34,79 +32,16 @@ def check_password():
 if not check_password():
     st.stop()
 
-# ----------------------------------------------------
-# 3. 구글 시트 데이터 로딩 (핵심 엔진) 🚀
-# ----------------------------------------------------
-@st.cache_data(ttl=60) # 60초마다 갱신
-def load_data_from_sheet():
-    try:
-        # 스트림릿 시크릿에서 열쇠 꺼내기
-        secrets = st.secrets["gcp_service_account"]
-        
-        # [수정됨] 권한 범위(Scope)에 'drive' 추가! (이게 빠져서 에러남)
-        scopes = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive"
-        ]
-        
-        creds = Credentials.from_service_account_info(secrets, scopes=scopes)
-        client = gspread.authorize(creds)
-        
-        # 엑셀 파일 열기
-        sheet = client.open("vpmi_data").sheet1
-        data = sheet.get_all_records()
-        
-        # 데이터 변환 (엑셀 -> 앱 형식)
-        db = {}
-        for row in data:
-            name = row['이름']
-            if not name: continue
-            
-            # 주문내역 파싱 (예: "시원한 것:21, 커드:7")
-            items_list = []
-            raw_items = str(row['주문내역']).split(',')
-            for item in raw_items:
-                if ':' in item:
-                    p_name, p_qty = item.split(':')
-                    # 용량이 명시되지 않은 경우 기본값 처리 로직 필요 시 추가
-                    items_list.append({
-                        "제품": p_name.strip(), 
-                        "수량": int(p_qty.strip()),
-                        "용량": "표준" 
-                    })
-            
-            db[name] = {
-                "group": row['그룹'],
-                "note": row['비고'],
-                "default": True if str(row['기본발송']).upper() == 'O' else False,
-                "items": items_list
-            }
-        return db
-    except Exception as e:
-        st.error(f"❌ 구글 시트 연결 실패: {e}")
-        return {}
+# 3. 데이터 초기화
+def add_patient(db, name, group, note, default, items):
+    db[name] = {"group": group, "note": note, "default": default, "items": items}
 
-# 4. 세션 초기화
 def init_session_state():
-    # (1) 날짜
+    # (1) 날짜 초기화
     if 'target_date' not in st.session_state:
         st.session_state.target_date = datetime.now(KST)
     
-    # (2) 뷰 모드
-    if 'view_month' not in st.session_state:
-        st.session_state.view_month = st.session_state.target_date.month
-
-    # (3) 환자 DB (구글 시트 연동)
-    if 'patient_db' not in st.session_state:
-        # 데이터 로드 시도
-        loaded_db = load_data_from_sheet()
-        if loaded_db:
-             st.session_state.patient_db = loaded_db
-        else:
-             # 로드 실패 시 빈 딕셔너리 (에러 메시지는 위에서 출력됨)
-             st.session_state.patient_db = {}
-
-    # (4) 연간 일정 DB
+    # (2) 연간 일정 DB
     if 'schedule_db' not in st.session_state:
         st.session_state.schedule_db = {
             1: {"title": "1월 (JAN)", "main": ["동백꽃 (대사/필터링)", "인삼사이다 (병입)", "유기농 우유 커드"], "note": "동백꽃 pH 3.8~4.0 도달 시 종료"},
@@ -122,8 +57,84 @@ def init_session_state():
             11: {"title": "11월 (NOV)", "main": ["무염김치 (대량 김장)", "생지황", "인삼(수삼/새싹삼)"], "note": "김치소+육수 배합 중요"},
             12: {"title": "12월 (DEC)", "main": ["동백꽃 (채취 시작)", "메주콩(백태)", "한 해 마감"], "note": "동백꽃 1:6, 1:9, 1:12 비율 실험"}
         }
+    
+    # (3) 뷰 모드
+    if 'view_month' not in st.session_state:
+        st.session_state.view_month = st.session_state.target_date.month
 
-    # (5) 레시피 DB
+    # (4) 처방전 DB
+    if 'regimen_db' not in st.session_state:
+        st.session_state.regimen_db = {
+            "울산 자궁근종": """1. 아침: 장미꽃 대사체 + 생수 350ml (격일)
+2. 취침 전: 인삼 전체 대사체 + 생수 1.8L 혼합물 500ml
+3. 식사 대용: 시원한 것 1병 + 계란-우유 대사체 1/2병
+4. 생활 습관: 자궁 보온, 기상 직후 골반 스트레칭
+5. 관리: 2주 단위 초음파 검사"""
+        }
+
+    if 'product_list' not in st.session_state:
+        plist = [
+            "시원한 것", "마시는 것", "커드 시원한 것", "커드", "계란 커드", "EX",
+            "인삼대사체(PAGI) 항암용", "인삼대사체(PAGI) 뇌질환용",
+            "표고버섯 대사체", "개망초(EDF)", "장미꽃 대사체",
+            "애기똥풀 대사체", "인삼 사이다", "송이 대사체",
+            "PAGI 희석액", "Vitamin C", "SiO2", "계란커드 스타터",
+            "혼합 [E.R.P.V.P]", "혼합 [P.V.E]", "혼합 [P.P.E]",
+            "혼합 [Ex.P]", "혼합 [R.P]", "혼합 [Edf.P]", "혼합 [P.P]"
+        ]
+        st.session_state.product_list = plist
+
+    if 'patient_db' not in st.session_state:
+        db = {}
+        
+        # ---------------- [1] 매주 발송 그룹 ----------------
+        
+        # 남양주 1
+        items = [{"제품": "시원한 것", "용량": "280ml", "수량": 21}, {"제품": "커드 시원한 것", "용량": "280ml", "수량": 14}, {"제품": "커드", "용량": "150ml", "수량": 7}, {"제품": "EX", "용량": "280ml", "수량": 3}, {"제품": "인삼대사체(PAGI) 항암용", "용량": "50ml", "수량": 7, "비고": "원액"}, {"제품": "표고버섯 대사체", "용량": "50ml", "수량": 7}]
+        add_patient(db, "남양주 1", "매주 발송", "⚠️ 신장 투석", False, items)
+
+        # 남양주 2
+        items = [{"제품": "마시는 것", "용량": "280ml", "수량": 14}, {"제품": "시원한 것", "용량": "280ml", "수량": 14}, {"제품": "커드 시원한 것", "용량": "280ml", "수량": 14}, {"제품": "커드", "용량": "150ml", "수량": 7}, {"제품": "인삼대사체(PAGI) 항암용", "용량": "50ml", "수량": 14}, {"제품": "개망초(EDF)", "용량": "50ml", "수량": 7}, {"제품": "장미꽃 대사체", "용량": "50ml", "수량": 3}]
+        add_patient(db, "남양주 2", "매주 발송", "⚠️ 신장 투석", True, items)
+
+        # 남양주 4
+        items = [{"제품": "시원한 것", "용량": "280ml", "수량": 14}, {"제품": "마시는 것", "용량": "280ml", "수량": 7}, {"제품": "커드 시원한 것", "용량": "280ml", "수량": 7}, {"제품": "인삼대사체(PAGI) 항암용", "용량": "50ml", "수량": 7}, {"제품": "애기똥풀 대사체", "용량": "50ml", "수량": 7}]
+        add_patient(db, "남양주 4", "매주 발송", "", True, items)
+
+
+        # ---------------- [2] 격주 발송 그룹 ----------------
+
+        # 김동민 부인
+        items = [{"제품": "혼합 [E.R.P.V.P]", "용량": "150ml", "수량": 14, "타입": "혼합"}, {"제품": "시원한 것", "용량": "280ml", "수량": 42}, {"제품": "마시는 것", "용량": "280ml", "수량": 14}, {"제품": "커드 시원한 것", "용량": "280ml", "수량": 14}]
+        add_patient(db, "김동민 부인", "격주 발송", "유방암", True, items)
+        
+        # 김귀례
+        items = [{"제품": "인삼 사이다", "용량": "280ml", "수량": 14}, {"제품": "마시는 것", "용량": "280ml", "수량": 28}, {"제품": "시원한 것", "용량": "280ml", "수량": 28}, {"제품": "커드 시원한 것", "용량": "280ml", "수량": 14}, {"제품": "인삼대사체(PAGI) 항암용", "용량": "50ml", "수량": 14}, {"제품": "송이 대사체", "용량": "50ml", "수량": 14}]
+        add_patient(db, "김귀례", "격주 발송", "유방암", True, items)
+        
+        # 김성기
+        items = [{"제품": "혼합 [P.V.E]", "용량": "150ml", "수량": 14, "타입": "혼합"}, {"제품": "혼합 [P.P.E]", "용량": "150ml", "수량": 14, "타입": "혼합"}, {"제품": "인삼대사체(PAGI) 항암용", "용량": "50ml", "수량": 42}, {"제품": "시원한 것", "용량": "280ml", "수량": 42}, {"제품": "커드 시원한 것", "용량": "280ml", "수량": 28}]
+        add_patient(db, "김성기", "격주 발송", "유방암", True, items)
+        
+        # 최은찬
+        items = [{"제품": "마시는 것", "용량": "280ml", "수량": 28}, {"제품": "시원한 것", "용량": "280ml", "수량": 28}, {"제품": "커드 시원한 것", "용량": "280ml", "수량": 28}, {"제품": "인삼 사이다", "용량": "280ml", "수량": 14}, {"제품": "인삼대사체(PAGI) 항암용", "용량": "50ml", "수량": 14}]
+        add_patient(db, "최은찬", "격주 발송", "유방암", True, items)
+        
+        # 하혜숙
+        items = [{"제품": "혼합 [Ex.P]", "용량": "150ml", "수량": 14, "타입": "혼합"}, {"제품": "혼합 [R.P]", "용량": "150ml", "수량": 14, "타입": "혼합"}, {"제품": "혼합 [Edf.P]", "용량": "150ml", "수량": 14, "타입": "혼합"}, {"제품": "혼합 [P.P]", "용량": "150ml", "수량": 14, "타입": "혼합"}, {"제품": "커드 시원한 것", "용량": "280ml", "수량": 14}, {"제품": "PAGI 희석액", "용량": "50ml", "수량": 14}]
+        add_patient(db, "하혜숙", "격주 발송", "유방암", True, items)
+
+        # 울산 (자궁근종) - 격주 발송으로 통합
+        items = [
+            {"제품": "장미꽃 대사체", "용량": "50ml", "수량": 7},
+            {"제품": "인삼대사체(PAGI) 항암용", "용량": "50ml", "수량": 4},
+            {"제품": "시원한 것", "용량": "280ml", "수량": 14},
+            {"제품": "계란 커드", "용량": "150g", "수량": 7}
+        ]
+        add_patient(db, "울산(자궁근종)", "격주 발송", "자궁근종", True, items)
+
+        st.session_state.patient_db = db
+
     if 'recipe_db' not in st.session_state:
         r_db = {}
         r_db["계란커드 스타터 [혼합]"] = {"desc": "대사체 단순 혼합", "batch_size": 9, "materials": {"개망초 대사체": 8, "아카시아잎 대사체": 1}}
@@ -136,21 +147,11 @@ def init_session_state():
         r_db["혼합 [Edf.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"개망초(EDF) (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "인삼사이다": 50}}
         r_db["혼합 [P.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
         st.session_state.recipe_db = r_db
-    
-    # (6) 처방전 DB
-    if 'regimen_db' not in st.session_state:
-        st.session_state.regimen_db = {
-            "울산 자궁근종": """1. 아침: 장미꽃 대사체 + 생수 350ml (격일)
-2. 취침 전: 인삼 전체 대사체 + 생수 1.8L 혼합물 500ml
-3. 식사 대용: 시원한 것 1병 + 계란-우유 대사체 1/2병
-4. 생활 습관: 자궁 보온, 기상 직후 골반 스트레칭
-5. 관리: 2주 단위 초음파 검사"""
-        }
 
 init_session_state()
 
-# 5. 메인 화면
-st.title("🏥 엘랑비탈 ERP v.5.2.1 (Live DB)")
+# 4. 계산기 모드
+st.title("🏥 엘랑비탈 ERP v.5.3")
 col1, col2 = st.columns(2)
 
 def on_date_change():
@@ -170,44 +171,30 @@ month_str = f"{target_date.month}월"
 
 st.divider()
 
-# DB 연결 상태 확인 및 데이터 로드
-if st.button("🔄 데이터 새로고침 (구글 시트)"):
-    st.cache_data.clear()
-    st.session_state.patient_db = load_data_from_sheet()
-    st.success("최신 데이터로 갱신되었습니다!")
-    st.rerun()
-
 db = st.session_state.patient_db
 sel_p = {}
 
+# [v.5.3] 매주/격주 그룹으로 UI 재배치
 c1, c2 = st.columns(2)
 with c1:
-    st.subheader("🚛 남양주 / 기타")
+    st.subheader("🚛 매주 발송 (Weekly)")
     if db:
         for k, v in db.items():
-            if v['group'] != "유방암" and v['group'] != "울산":
+            if v['group'] == "매주 발송":
                 if st.checkbox(k, v['default'], help=v['note']): sel_p[k] = v['items']
     else:
-        st.warning("데이터를 불러오는 중이거나 연결에 실패했습니다.")
+        st.warning("데이터 없음")
 
 with c2:
-    st.subheader("🚛 유방암")
+    st.subheader("🚚 격주 발송 (Bi-weekly)")
     if db:
         for k, v in db.items():
-            if v['group'] == "유방암":
-                if st.checkbox(k, v['default'], help=v['note']): sel_p[k] = v['items']
-    
-    st.divider()
-    st.subheader("🚛 울산 (자궁근종)")
-    if db:
-        for k, v in db.items():
-            if v['group'] == "울산":
+            if v['group'] == "격주 발송":
                 if st.checkbox(k, v['default'], help=v['note']): sel_p[k] = v['items']
 
 st.divider()
 t1, t2, t3, t4, t5, t6, t7 = st.tabs(["🏷️ 라벨", "🎁 장연구원", "🧪 한책임", "📊 원자재", f"🏭 생산 관리 ({week_str})", f"🗓️ 연간 일정 ({month_str})", "💊 임상/처방 관리"])
 
-# [이하 탭 로직은 기존 v.5.x와 동일하므로 전체 유지]
 with t1:
     st.header("🖨️ 라벨 출력")
     if not sel_p: st.warning("환자를 선택하세요")
@@ -221,8 +208,12 @@ with t1:
                     st.markdown("---")
                     for x in items:
                         chk = "✅" if "혼합" in str(x['제품']) else "□"
-                        note = f"👉 {st.session_state.patient_db[name]['note']}" if 'note' in st.session_state.patient_db[name] and st.session_state.patient_db[name]['note'] else ""
-                        st.markdown(f"**{chk} {x['제품']}** {x['수량']}개 ({x['용량']})")
+                        note = f"👉 {x.get('비고', '')}" if x.get('비고') else ""
+                        # note info from db if available
+                        if not note and 'note' in st.session_state.patient_db[name] and st.session_state.patient_db[name]['note']:
+                             note = f" ({st.session_state.patient_db[name]['note']})"
+
+                        st.markdown(f"**{chk} {x['제품']}** {x['수량']}개 ({x['용량']}){note}")
                     st.markdown("---")
                     st.write("🏥 **엘랑비탈바이오**")
 
@@ -354,7 +345,6 @@ with t5:
         st.write(f"🧪 **스타터 ({egg_starter_pct}%)**: **{req_starter_total:.1f} kg**")
         st.caption(f"└ 개망초(8): {req_starter_daisy:.2f} kg")
         st.caption(f"└ 아카시아(1): {req_starter_acacia:.2f} kg")
-        
     st.markdown("---")
     st.markdown("#### 3️⃣ 최종 완제품 (Final Count)")
     c_fin1, c_fin2, c_fin3 = st.columns(3)
