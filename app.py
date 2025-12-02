@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, date, timezone
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -24,7 +24,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.6.1")
+            st.title("🔒 엘랑비탈 ERP v.6.1.1")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -46,17 +46,14 @@ def load_data_from_sheet():
         data = sheet.get_all_records()
         
         db = {}
-        # 디버깅용 원본 데이터 리스트
-        raw_debug_list = []
-
+        debug_list = []
+        
         for row in data:
-            name = row.get('이름') # get으로 안전하게 가져옴
+            name = row.get('이름')
             if not name: continue
             
             items_list = []
-            # 주문내역 처리 (컬럼명이 다를 수 있어 안전장치)
-            order_str = str(row.get('주문내역', ''))
-            raw_items = order_str.split(',')
+            raw_items = str(row.get('주문내역', '')).split(',')
             for item in raw_items:
                 if ':' in item:
                     p_name, p_qty = item.split(':')
@@ -68,12 +65,9 @@ def load_data_from_sheet():
                         "용량": "표준" 
                     })
             
-            # 시작일 정보 읽기 (컬럼명 확인)
-            # '시작일'이 없으면 '회차' 컬럼에서라도 가져옴
+            # 시작일 읽기
             start_date_raw = str(row.get('시작일', row.get('회차', ''))).strip()
-
-            # 디버깅 데이터 수집
-            raw_debug_list.append({"이름": name, "원본_날짜값": f"'{start_date_raw}'"})
+            debug_list.append({"이름": name, "시작일_원본": start_date_raw})
 
             db[name] = {
                 "group": row.get('그룹', ''),
@@ -82,8 +76,7 @@ def load_data_from_sheet():
                 "items": items_list,
                 "start_date_raw": start_date_raw
             }
-        
-        return db, raw_debug_list
+        return db, debug_list
     except Exception as e:
         st.error(f"❌ 데이터 로딩 실패: {e}")
         return {}, []
@@ -99,52 +92,100 @@ def init_session_state():
         loaded_db, debug_info = load_data_from_sheet()
         if loaded_db:
             st.session_state.patient_db = loaded_db
-            st.session_state.debug_info = debug_info # 디버깅 정보 저장
+            st.session_state.debug_info = debug_info
         else:
             st.session_state.patient_db = {} 
             st.session_state.debug_info = []
 
-    # (스케줄 및 레시피 DB는 생략 - 기존과 동일)
     if 'schedule_db' not in st.session_state:
-        st.session_state.schedule_db = {1: {"title": "1월", "main": [], "note": ""}} # (간략화)
+        st.session_state.schedule_db = {
+            1: {"title": "1월 (JAN)", "main": ["동백꽃 (대사/필터링)", "인삼사이다 (병입)", "유기농 우유 커드"], "note": "동백꽃 pH 3.8~4.0 도달 시 종료"},
+            2: {"title": "2월 (FEB)", "main": ["갈대뿌리 (채취/건조/대사)", "당근 (대사)"], "note": "갈대뿌리 세척 후 건조 수율 약 37%"},
+            3: {"title": "3월 (MAR)", "main": ["봄꽃 대사 (장미, 프리지아, 카네이션 등)", "표고버섯", "커피콩(실험)"], "note": "꽃:줄기 비율 1:1 테스트"},
+            4: {"title": "4월 (APR)", "main": ["애기똥풀 (채취 시작)", "등나무꽃", "머위", "산마늘"], "note": "애기똥풀 전초 사용"},
+            5: {"title": "5월 (MAY)", "main": ["개망초꽃+아카시아잎 합제 대사 (계란커드용 8:1)", "아카시아꽃 (대량 생산)", "뽕잎", "구찌뽕"], "note": "계란커드 스타터용 합제 대사 시작"},
+            6: {"title": "6월 (JUN)", "main": ["매실 (청 제조)", "개망초 (채취/대사)", "완두콩"], "note": "매실 씨 제거 후 으깨거나 채썰기"},
+            7: {"title": "7월 (JUL)", "main": ["토종홉 꽃 (개화/관리)", "연꽃 / 연잎", "무궁화", "목백일홍", "풋고추"], "note": "여름철 대사 속도 빠름 주의"},
+            8: {"title": "8월 (AUG)", "main": ["풋사과 (대사)", "각종 대사체 필터링/소포장"], "note": "풋사과 1:6 비율"},
+            9: {"title": "9월 (SEP)", "main": ["청귤 (대사)", "장미꽃 (가을)", "대파"], "note": "추석 선물세트 준비 기간"},
+            10: {"title": "10월 (OCT)", "main": ["송이버섯 (북한산/울진산)", "표고버섯", "산자나무(비타민열매)"], "note": "송이 등외품 활용"},
+            11: {"title": "11월 (NOV)", "main": ["무염김치 (대량 김장)", "생지황", "인삼(수삼/새싹삼)"], "note": "김치소+육수 배합 중요"},
+            12: {"title": "12월 (DEC)", "main": ["동백꽃 (채취 시작)", "메주콩(백태)", "한 해 마감"], "note": "동백꽃 1:6, 1:9, 1:12 비율 실험"}
+        }
+
     if 'yearly_memos' not in st.session_state:
         st.session_state.yearly_memos = []
+
+    if 'product_list' not in st.session_state:
+        plist = [
+            "시원한 것", "마시는 것", "커드 시원한 것", "커드", "계란 커드", "EX",
+            "인삼대사체(PAGI) 항암용", "인삼대사체(PAGI) 뇌질환용",
+            "표고버섯 대사체", "개망초(EDF)", "장미꽃 대사체",
+            "애기똥풀 대사체", "인삼 사이다", "송이 대사체",
+            "PAGI 희석액", "Vitamin C", "SiO2", "계란커드 스타터",
+            "혼합 [E.R.P.V.P]", "혼합 [P.V.E]", "혼합 [P.P.E]",
+            "혼합 [Ex.P]", "혼합 [R.P]", "혼합 [Edf.P]", "혼합 [P.P]"
+        ]
+        st.session_state.product_list = plist
+
     if 'recipe_db' not in st.session_state:
-        st.session_state.recipe_db = {}
+        r_db = {}
+        r_db["계란커드 스타터 [혼합]"] = {"desc": "대사체 단순 혼합", "batch_size": 9, "materials": {"개망초 대사체": 8, "아카시아잎 대사체": 1}}
+        r_db["계란커드 스타터 [합제]"] = {"desc": "원물 8:1 혼합 대사", "batch_size": 9, "materials": {"개망초꽃(원물)": 8, "아카시아잎(원물)": 1, "EX": 36}}
+        r_db["혼합 [E.R.P.V.P]"] = {"desc": "6배수 혼합/14병", "batch_size": 14, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 12, "송이대사체 (50ml)": 6, "장미꽃 대사체 (50ml)": 6, "Vitamin C (3000mg)": 14, "SiO2 (1ml)": 14, "EX": 900}}
+        r_db["혼합 [P.V.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 1, "Vitamin C (3000mg)": 1, "EX": 100}}
+        r_db["혼합 [P.P.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
+        r_db["혼합 [Ex.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 100}}
+        r_db["혼합 [R.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"장미꽃 대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "인삼사이다": 50}}
+        r_db["혼합 [Edf.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"개망초(EDF) (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "인삼사이다": 50}}
+        r_db["혼합 [P.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
+        st.session_state.recipe_db = r_db
+    
     if 'regimen_db' not in st.session_state:
-        st.session_state.regimen_db = {}
+        st.session_state.regimen_db = {
+            "울산 자궁근종": """1. 아침: 장미꽃 대사체 + 생수 350ml (격일)
+2. 취침 전: 인삼 전체 대사체 + 생수 1.8L 혼합물 500ml
+3. 식사 대용: 시원한 것 1병 + 계란-우유 대사체 1/2병
+4. 생활 습관: 자궁 보온, 기상 직후 골반 스트레칭
+5. 관리: 2주 단위 초음파 검사"""
+        }
 
 init_session_state()
 
 # 5. 메인 화면
-st.title("🏥 엘랑비탈 ERP v.6.1 (Smart Calc)")
+st.title("🏥 엘랑비탈 ERP v.6.1.1 (Smart Calc)")
 
-# [v.6.1] 데이터 투시경 (디버깅)
-with st.expander("🔍 엑셀 데이터 원본 확인 (문제가 있을 때 열어보세요)"):
+# [v.6.1] 데이터 투시경 (문제가 있을 때만 열어보세요)
+with st.expander("🔍 엑셀 데이터 원본 확인 (디버깅용)"):
     if 'debug_info' in st.session_state and st.session_state.debug_info:
         st.dataframe(pd.DataFrame(st.session_state.debug_info))
-        st.info("👆 '원본_날짜값'에 날짜가 제대로 들어왔는지 확인하세요. (따옴표 안에 비어있거나 이상한 글자가 없어야 합니다)")
     else:
-        st.warning("데이터가 로드되지 않았습니다.")
+        st.caption("데이터가 없습니다.")
 
 col1, col2 = st.columns(2)
 
-# [v.6.1] 초강력 회차 계산 로직 (Pandas 사용)
-def calculate_round_v3(start_date_str, current_date, group_type):
+# [v.6.1.1] 초강력 회차 계산기 (날짜 타입 완벽 대응)
+def calculate_round_v4(start_date_input, current_date_input, group_type):
     try:
-        # 값이 비어있으면 0회
-        if not start_date_str or start_date_str == 'None' or start_date_str == '':
+        # 1. 시작일이 없으면 0
+        if not start_date_input or str(start_date_input) == 'nan':
             return 0, "날짜없음"
             
-        # Pandas를 이용한 강력한 날짜 변환
-        start_date = pd.to_datetime(start_date_str).date()
-        curr_date = current_date.date()
+        # 2. 시작일 파싱 (문자열이든 날짜객체든 다 처리)
+        start_date = pd.to_datetime(start_date_input).date()
         
+        # 3. 현재 날짜 파싱 (여기가 중요! datetime이든 date든 다 처리)
+        if isinstance(current_date_input, datetime):
+            curr_date = current_date_input.date()
+        else:
+            curr_date = current_date_input # 이미 date 타입인 경우
+            
+        # 4. 차이 계산
         delta = (curr_date - start_date).days
         
-        if delta < 0: return 0, start_date.strftime('%Y-%m-%d') # 시작 전
+        if delta < 0: return 0, start_date.strftime('%Y-%m-%d')
         
-        # 주차 계산 (반올림)
+        # 5. 주차 계산 (반올림)
         weeks_passed = round(delta / 7)
         
         if group_type == "매주 발송":
@@ -155,7 +196,7 @@ def calculate_round_v3(start_date_str, current_date, group_type):
         return r, start_date.strftime('%Y-%m-%d')
             
     except Exception as e:
-        return 1, f"오류: {start_date_str}" # 변환 실패 시 원본 보여줌
+        return 1, "오류"
 
 def on_date_change():
     if 'target_date' in st.session_state:
@@ -176,7 +217,6 @@ st.divider()
 
 if st.button("🔄 데이터 새로고침 (구글 시트)"):
     st.cache_data.clear()
-    # 데이터 다시 로드 및 세션 업데이트
     loaded_db, debug_info = load_data_from_sheet()
     st.session_state.patient_db = loaded_db
     st.session_state.debug_info = debug_info
@@ -193,15 +233,14 @@ with c1:
         for k, v in db.items():
             if v.get('group') == "매주 발송":
                 # [계산]
-                r_num, s_date_disp = calculate_round_v3(v.get('start_date_raw'), target_date, "매주 발송")
+                r_num, s_date_disp = calculate_round_v4(v.get('start_date_raw'), target_date, "매주 발송")
                 
                 round_info = f" ({r_num}/12회)" 
                 if r_num > 12: round_info += " 🚨"
                 
                 note_display = f" 📌{v['note']}" if v.get('note') else ""
                 
-                # 툴팁에 인식된 시작일 표시
-                if st.checkbox(f"{k}{round_info}{note_display}", v.get('default'), help=f"인식된 시작일: {s_date_disp}"): 
+                if st.checkbox(f"{k}{round_info}{note_display}", v.get('default'), help=f"시작일: {s_date_disp}"): 
                     sel_p[k] = v['items']
     else:
         st.info("데이터 로딩 중...")
@@ -211,13 +250,13 @@ with c2:
     if db:
         for k, v in db.items():
             if v.get('group') in ["격주 발송", "유방암", "울산"]:
-                r_num, s_date_disp = calculate_round_v3(v.get('start_date_raw'), target_date, "격주 발송")
+                r_num, s_date_disp = calculate_round_v4(v.get('start_date_raw'), target_date, "격주 발송")
                 
                 round_info = f" ({r_num}/6회)"
                 if r_num > 6: round_info += " 🚨"
                 
                 note_display = f" 📌{v['note']}" if v.get('note') else ""
-                if st.checkbox(f"{k}{round_info}{note_display}", v.get('default'), help=f"인식된 시작일: {s_date_disp}"): 
+                if st.checkbox(f"{k}{round_info}{note_display}", v.get('default'), help=f"시작일: {s_date_disp}"): 
                     sel_p[k] = v['items']
 
 st.divider()
@@ -237,7 +276,7 @@ with t1:
                     s_date_raw = p_info.get('start_date_raw')
                     
                     calc_grp = "격주 발송" if grp in ["격주 발송", "유방암", "울산"] else "매주 발송"
-                    r_num, _ = calculate_round_v3(s_date_raw, target_date, calc_grp)
+                    r_num, _ = calculate_round_v4(s_date_raw, target_date, calc_grp)
                     
                     round_str = f" [{r_num}회차]" if r_num > 0 else ""
                     
@@ -252,11 +291,6 @@ with t1:
                     st.markdown("---")
                     st.write("🏥 **엘랑비탈바이오**")
 
-# (Tab 2~7 내용은 이전 버전과 동일하므로 생략해도 되지만, 
-# 실제 적용 시에는 이전 v.5.9.1 코드의 Tab 2~7 부분을 그대로 아래에 붙여넣으셔야 합니다.
-# 파일 전체를 교체하시려면 v.5.9.1 코드의 Tab 2 아래 부분을 복사해서 여기 붙이세요.)
-# *편의를 위해 간략한 안내만 드립니다.*
-
 # Tab 2~7 (기존 로직 유지)
 with t2:
     st.header("🎁 장연구원 (개별 포장)")
@@ -264,7 +298,7 @@ with t2:
     for items in sel_p.values():
         for x in items:
             if "혼합" not in str(x['제품']):
-                k = f"{x['제품']} {x['용량']}" if x['용량'] else x['제품']
+                k = f"{x['제품']} {x['용량']}" if x.get('용량') else x['제품']
                 tot[k] = tot.get(k, 0) + x['수량']
     df = pd.DataFrame(list(tot.items()), columns=["제품", "수량"]).sort_values("수량", ascending=False)
     st.dataframe(df, use_container_width=True)
@@ -495,6 +529,7 @@ with t6:
                     st.session_state.schedule_db[sel_month]['note'] = new_note
                     st.rerun()
 
+# Tab 7: 임상/처방 관리 (기존 유지)
 with t7:
     st.header("💊 환자별 맞춤 처방 관리")
     regimen_names = list(st.session_state.regimen_db.keys())
