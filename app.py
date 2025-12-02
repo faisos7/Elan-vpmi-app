@@ -4,6 +4,7 @@ import math
 from datetime import datetime, timedelta, timezone
 import gspread
 from google.oauth2.service_account import Credentials
+import re
 
 # 1. 페이지 설정
 st.set_page_config(page_title="엘랑비탈 정기배송", page_icon="🏥", layout="wide")
@@ -24,7 +25,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.5.7.1")
+            st.title("🔒 엘랑비탈 ERP v.5.9.1")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -63,7 +64,16 @@ def load_data_from_sheet():
                         "용량": "표준" 
                     })
             
-            # 시작일 정보 읽기 (없으면 빈칸)
+            # 회차(수동 입력값) - 계산 실패 시 사용
+            round_val = row.get('회차')
+            if round_val is None or str(round_val).strip() == "":
+                round_num = 1 
+            else:
+                try:
+                    round_num = int(str(round_val).replace('회', '').replace('주', '').strip())
+                except:
+                    round_num = 1
+
             start_date_str = str(row.get('시작일', '')).strip()
 
             db[name] = {
@@ -71,6 +81,7 @@ def load_data_from_sheet():
                 "note": row['비고'],
                 "default": True if str(row['기본발송']).upper() == 'O' else False,
                 "items": items_list,
+                "round": round_num,
                 "start_date": start_date_str
             }
         return db
@@ -108,8 +119,9 @@ def init_session_state():
             12: {"title": "12월 (DEC)", "main": ["동백꽃", "메주콩"], "note": "한 해 마감"}
         }
 
+    # [v.5.9.1 수정] 연간 메모 초기값 비움 (요청 반영)
     if 'yearly_memos' not in st.session_state:
-        st.session_state.yearly_memos = ["❗ 내년 토종홉 꽃 구매 (잊지 말 것!)"]
+        st.session_state.yearly_memos = []
 
     if 'product_list' not in st.session_state:
         plist = [
@@ -148,40 +160,46 @@ def init_session_state():
 init_session_state()
 
 # 5. 메인 화면
-st.title("🏥 엘랑비탈 ERP v.5.7.1 (Smart Calc)")
+st.title("🏥 엘랑비탈 ERP v.5.9.1 (Smart Calc)")
 col1, col2 = st.columns(2)
 
-# [v.5.7.1 수정] 회차 계산 로직 개선 (공백제거 & 반올림)
-def calculate_round(start_date_str, current_date, group_type):
+# [v.5.9.1 수정] 회차 계산 로직 개선 (날짜 파싱 강화)
+def calculate_round(start_date_input, current_date, group_type):
     try:
-        # 1. 문자열 정리 (공백 제거, 점/슬래시를 하이픈으로)
-        start_date_str = str(start_date_str).strip().replace('.', '-').replace('/', '-').replace(' ', '')
-        
-        # 2. 날짜 파싱 (유연하게)
-        try:
-            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
-        except ValueError:
-            # 혹시 다른 형식이면 시도 (예: 20251111)
-            start_date = datetime.strptime(start_date_str, "%Y%m%d").date()
+        # 1. 입력값이 이미 datetime 객체인 경우 처리 (엑셀에서 자동으로 변환된 경우)
+        if isinstance(start_date_input, (datetime, pd.Timestamp)):
+            start_date = start_date_input.date()
+        else:
+            # 2. 문자열 정리 (공백 제거, 점/슬래시를 하이픈으로)
+            start_date_str = str(start_date_input).strip().replace('.', '-').replace('/', '-').replace(' ', '')
+            
+            # 3. 날짜 파싱 시도
+            try:
+                start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+            except ValueError:
+                # 다른 형식 시도 (예: 20251111)
+                try:
+                    start_date = datetime.strptime(start_date_str, "%Y%m%d").date()
+                except:
+                    return 1 # 날짜 파싱 실패시 1회차
 
         curr_date = current_date.date()
         
-        # 3. 날짜 차이 계산
+        # 4. 날짜 차이 계산
         delta = (curr_date - start_date).days
         if delta < 0: return 0 # 시작 전
         
-        # 4. 주차 계산 (반올림 로직 적용!)
-        # 27일 차이 -> 27/7 = 3.85주 -> 반올림하면 4주 경과 -> 1,2,3,4,5회차 (즉 4+1)
+        # 5. 주차 계산 (반올림 로직 적용)
         weeks_passed = round(delta / 7)
         
         if group_type == "매주 발송":
             return weeks_passed + 1
         else: # 격주 발송
-            # 격주는 2주 단위로 나눔
+            # 격주는 2주 단위 (0~1주: 1회, 2~3주: 2회...)
             return (weeks_passed // 2) + 1
             
-    except:
-        return 1 # 에러나면 1
+    except Exception as e:
+        return 1 # 안전 장치
 
 def on_date_change():
     if 'target_date' in st.session_state:
@@ -218,7 +236,7 @@ with c1:
                 if v.get('start_date'):
                     round_num = calculate_round(v['start_date'], target_date, "매주 발송")
                 else:
-                    round_num = 1
+                    round_num = v.get('round', 1)
                 
                 round_info = f" ({round_num}/12회)" 
                 if round_num > 12: round_info += " 🚨"
@@ -237,7 +255,7 @@ with c2:
                 if v.get('start_date'):
                     round_num = calculate_round(v['start_date'], target_date, "격주 발송")
                 else:
-                    round_num = 1
+                    round_num = v.get('round', 1)
                 
                 round_info = f" ({round_num}/6회)"
                 if round_num > 6: round_info += " 🚨"
@@ -266,7 +284,8 @@ with t1:
                         r_num = calculate_round(s_date, target_date, calc_grp)
                         round_str = f" [{r_num}회차]"
                     else:
-                        round_str = ""
+                        r_num_db = p_info.get('round', 0)
+                        round_str = f" [{r_num_db}회차]" if r_num_db > 0 else ""
                     
                     st.markdown(f"### 🧊 {name}{round_str}")
                     st.caption(f"📅 {target_date.strftime('%Y-%m-%d')}")
@@ -279,7 +298,7 @@ with t1:
                     st.markdown("---")
                     st.write("🏥 **엘랑비탈바이오**")
 
-# Tab 2~7 (기존 로직 유지)
+# Tab 2~5 (기존 유지)
 with t2:
     st.header("🎁 장연구원 (개별 포장)")
     tot = {}
