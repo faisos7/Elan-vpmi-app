@@ -24,7 +24,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.5.9")
+            st.title("🔒 엘랑비탈 ERP v.5.7.1")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -63,15 +63,7 @@ def load_data_from_sheet():
                         "용량": "표준" 
                     })
             
-            round_val = row.get('회차')
-            if round_val is None or str(round_val).strip() == "":
-                round_num = 1 
-            else:
-                try:
-                    round_num = int(str(round_val).replace('회', '').replace('주', '').strip())
-                except:
-                    round_num = 1
-
+            # 시작일 정보 읽기 (없으면 빈칸)
             start_date_str = str(row.get('시작일', '')).strip()
 
             db[name] = {
@@ -79,7 +71,6 @@ def load_data_from_sheet():
                 "note": row['비고'],
                 "default": True if str(row['기본발송']).upper() == 'O' else False,
                 "items": items_list,
-                "round": round_num,
                 "start_date": start_date_str
             }
         return db
@@ -105,23 +96,20 @@ def init_session_state():
         st.session_state.schedule_db = {
             1: {"title": "1월 (JAN)", "main": ["동백꽃 (대사/필터링)", "인삼사이다 (병입)", "유기농 우유 커드"], "note": "동백꽃 pH 3.8~4.0 도달 시 종료"},
             2: {"title": "2월 (FEB)", "main": ["갈대뿌리 (채취/건조/대사)", "당근 (대사)"], "note": "갈대뿌리 세척 후 건조 수율 약 37%"},
-            3: {"title": "3월 (MAR)", "main": ["봄꽃 대사 (장미, 프리지아, 카네이션 등)", "표고버섯", "커피콩(실험)"], "note": "꽃:줄기 비율 1:1 테스트"},
-            4: {"title": "4월 (APR)", "main": ["애기똥풀 (채취 시작)", "등나무꽃", "머위", "산마늘"], "note": "애기똥풀 전초 사용"},
-            5: {"title": "5월 (MAY)", "main": ["개망초꽃+아카시아잎 합제 대사 (계란커드용 8:1)", "아카시아꽃 (대량 생산)", "뽕잎", "구찌뽕"], "note": "계란커드 스타터용 합제 대사 시작"},
-            6: {"title": "6월 (JUN)", "main": ["매실 (청 제조)", "개망초 (채취/대사)", "완두콩"], "note": "매실 씨 제거 후 으깨거나 채썰기"},
-            # [v.5.9 수정] 7월에 토종홉 꽃 추가
-            7: {"title": "7월 (JUL)", "main": ["토종홉 꽃 (개화/관리)", "연꽃 / 연잎", "무궁화", "목백일홍", "풋고추"], "note": "여름철 대사 속도 빠름 주의"},
-            8: {"title": "8월 (AUG)", "main": ["풋사과 (대사)", "각종 대사체 필터링/소포장"], "note": "풋사과 1:6 비율"},
-            9: {"title": "9월 (SEP)", "main": ["청귤 (대사)", "장미꽃 (가을)", "대파"], "note": "추석 선물세트 준비 기간"},
-            10: {"title": "10월 (OCT)", "main": ["송이버섯 (북한산/울진산)", "표고버섯", "산자나무(비타민열매)"], "note": "송이 등외품 활용"},
-            11: {"title": "11월 (NOV)", "main": ["무염김치 (대량 김장)", "생지황", "인삼(수삼/새싹삼)"], "note": "김치소+육수 배합 중요"},
-            12: {"title": "12월 (DEC)", "main": ["동백꽃 (채취 시작)", "메주콩(백태)", "한 해 마감"], "note": "동백꽃 1:6, 1:9, 1:12 비율 실험"}
+            3: {"title": "3월 (MAR)", "main": ["봄꽃 대사", "표고버섯"], "note": "꽃:줄기 비율 1:1 테스트"},
+            4: {"title": "4월 (APR)", "main": ["애기똥풀 (채취 시작)", "등나무꽃"], "note": "애기똥풀 전초 사용"},
+            5: {"title": "5월 (MAY)", "main": ["개망초꽃+아카시아잎 합제", "아카시아꽃", "뽕잎"], "note": "계란커드 스타터용 합제 대사 시작"},
+            6: {"title": "6월 (JUN)", "main": ["매실 (청 제조)", "개망초"], "note": "매실 씨 제거"},
+            7: {"title": "7월 (JUL)", "main": ["토종홉 꽃 (개화/관리)", "연꽃 / 연잎", "무궁화"], "note": "여름철 대사 속도 빠름 주의"},
+            8: {"title": "8월 (AUG)", "main": ["풋사과 (대사)"], "note": "풋사과 1:6 비율"},
+            9: {"title": "9월 (SEP)", "main": ["청귤", "장미꽃 (가을)"], "note": "추석 선물세트 준비"},
+            10: {"title": "10월 (OCT)", "main": ["송이버섯", "표고버섯", "산자나무"], "note": "송이 등외품 활용"},
+            11: {"title": "11월 (NOV)", "main": ["무염김치", "생지황", "인삼"], "note": "김치소+육수 배합 중요"},
+            12: {"title": "12월 (DEC)", "main": ["동백꽃", "메주콩"], "note": "한 해 마감"}
         }
 
     if 'yearly_memos' not in st.session_state:
-        st.session_state.yearly_memos = [
-            "❗ 내년 토종홉 꽃 구매 (잊지 말 것!)"
-        ]
+        st.session_state.yearly_memos = ["❗ 내년 토종홉 꽃 구매 (잊지 말 것!)"]
 
     if 'product_list' not in st.session_state:
         plist = [
@@ -138,7 +126,7 @@ def init_session_state():
     if 'recipe_db' not in st.session_state:
         r_db = {}
         r_db["계란커드 스타터 [혼합]"] = {"desc": "대사체 단순 혼합", "batch_size": 9, "materials": {"개망초 대사체": 8, "아카시아잎 대사체": 1}}
-        r_db["계란커드 스타터 [합제]"] = {"desc": "원물 8:1 혼합 대사 (내년 5월~)", "batch_size": 9, "materials": {"개망초꽃(원물)": 8, "아카시아잎(원물)": 1, "EX": 36}}
+        r_db["계란커드 스타터 [합제]"] = {"desc": "원물 8:1 혼합 대사", "batch_size": 9, "materials": {"개망초꽃(원물)": 8, "아카시아잎(원물)": 1, "EX": 36}}
         r_db["혼합 [E.R.P.V.P]"] = {"desc": "6배수 혼합/14병", "batch_size": 14, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 12, "송이대사체 (50ml)": 6, "장미꽃 대사체 (50ml)": 6, "Vitamin C (3000mg)": 14, "SiO2 (1ml)": 14, "EX": 900}}
         r_db["혼합 [P.V.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 1, "Vitamin C (3000mg)": 1, "EX": 100}}
         r_db["혼합 [P.P.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
@@ -160,24 +148,40 @@ def init_session_state():
 init_session_state()
 
 # 5. 메인 화면
-st.title("🏥 엘랑비탈 ERP v.5.9 (Live DB)")
+st.title("🏥 엘랑비탈 ERP v.5.7.1 (Smart Calc)")
 col1, col2 = st.columns(2)
 
+# [v.5.7.1 수정] 회차 계산 로직 개선 (공백제거 & 반올림)
 def calculate_round(start_date_str, current_date, group_type):
     try:
-        start_date_str = start_date_str.replace('.', '-')
-        start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+        # 1. 문자열 정리 (공백 제거, 점/슬래시를 하이픈으로)
+        start_date_str = str(start_date_str).strip().replace('.', '-').replace('/', '-').replace(' ', '')
+        
+        # 2. 날짜 파싱 (유연하게)
+        try:
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            # 혹시 다른 형식이면 시도 (예: 20251111)
+            start_date = datetime.strptime(start_date_str, "%Y%m%d").date()
+
         curr_date = current_date.date()
         
+        # 3. 날짜 차이 계산
         delta = (curr_date - start_date).days
-        if delta < 0: return 0 
+        if delta < 0: return 0 # 시작 전
+        
+        # 4. 주차 계산 (반올림 로직 적용!)
+        # 27일 차이 -> 27/7 = 3.85주 -> 반올림하면 4주 경과 -> 1,2,3,4,5회차 (즉 4+1)
+        weeks_passed = round(delta / 7)
         
         if group_type == "매주 발송":
-            return (delta // 7) + 1
+            return weeks_passed + 1
         else: # 격주 발송
-            return (delta // 14) + 1
+            # 격주는 2주 단위로 나눔
+            return (weeks_passed // 2) + 1
+            
     except:
-        return 1 
+        return 1 # 에러나면 1
 
 def on_date_change():
     if 'target_date' in st.session_state:
@@ -214,7 +218,7 @@ with c1:
                 if v.get('start_date'):
                     round_num = calculate_round(v['start_date'], target_date, "매주 발송")
                 else:
-                    round_num = v.get('round', 1)
+                    round_num = 1
                 
                 round_info = f" ({round_num}/12회)" 
                 if round_num > 12: round_info += " 🚨"
@@ -233,7 +237,7 @@ with c2:
                 if v.get('start_date'):
                     round_num = calculate_round(v['start_date'], target_date, "격주 발송")
                 else:
-                    round_num = v.get('round', 1)
+                    round_num = 1
                 
                 round_info = f" ({round_num}/6회)"
                 if round_num > 6: round_info += " 🚨"
@@ -262,8 +266,7 @@ with t1:
                         r_num = calculate_round(s_date, target_date, calc_grp)
                         round_str = f" [{r_num}회차]"
                     else:
-                        r_num_db = p_info.get('round', 0)
-                        round_str = f" [{r_num_db}회차]" if r_num_db > 0 else ""
+                        round_str = ""
                     
                     st.markdown(f"### 🧊 {name}{round_str}")
                     st.caption(f"📅 {target_date.strftime('%Y-%m-%d')}")
@@ -276,7 +279,7 @@ with t1:
                     st.markdown("---")
                     st.write("🏥 **엘랑비탈바이오**")
 
-# Tab 2~5 (기존 유지)
+# Tab 2~7 (기존 로직 유지)
 with t2:
     st.header("🎁 장연구원 (개별 포장)")
     tot = {}
@@ -457,13 +460,12 @@ with t5:
             st.metric("월간 케어", f"{capacity_person} 명")
             st.caption("1인 1일 1개 섭취 기준")
 
-# [v.5.8] Tab 6: 연간 일정
+# Tab 6: 연간 일정
 with t6:
     st.header(f"🗓️ 연간 생산 캘린더 ({st.session_state.view_month}월)")
     sel_month = st.selectbox("월 선택", list(range(1, 13)), key="view_month")
     current_sched = st.session_state.schedule_db[sel_month]
     
-    # 1. 연간 중요 메모
     with st.container(border=True):
         st.subheader("📝 연간 주요 메모 (Yearly Memos)")
         c_memo, c_m_tool = st.columns([2, 1])
@@ -487,7 +489,6 @@ with t6:
                     st.rerun()
     st.divider()
     
-    # 2. 월별 일정
     st.subheader(f"📅 {current_sched['title']}")
     col_main, col_note = st.columns([2, 1])
     with col_main:
