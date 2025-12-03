@@ -25,7 +25,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.6.3")
+            st.title("🔒 엘랑비탈 ERP v.6.4")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -35,14 +35,17 @@ def check_password():
 if not check_password():
     st.stop()
 
-# 3. 구글 시트 데이터 로딩
+# 3. 구글 시트 데이터 로딩 및 저장 함수
+def get_gspread_client():
+    secrets = st.secrets["gcp_service_account"]
+    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    creds = Credentials.from_service_account_info(secrets, scopes=scopes)
+    return gspread.authorize(creds)
+
 @st.cache_data(ttl=60) 
 def load_data_from_sheet():
     try:
-        secrets = st.secrets["gcp_service_account"]
-        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_info(secrets, scopes=scopes)
-        client = gspread.authorize(creds)
+        client = get_gspread_client()
         sheet = client.open("vpmi_data").sheet1
         data = sheet.get_all_records()
         
@@ -87,6 +90,25 @@ def load_data_from_sheet():
     except Exception as e:
         st.error(f"❌ 데이터 로딩 실패: {e}")
         return {}
+
+# [v.6.4] 이력 저장 함수
+def save_to_history(record_list):
+    try:
+        client = get_gspread_client()
+        # history 시트가 없으면 생성 시도, 있으면 열기
+        try:
+            sheet = client.open("vpmi_data").worksheet("history")
+        except:
+            sheet = client.open("vpmi_data").add_worksheet(title="history", rows="1000", cols="10")
+            sheet.append_row(["발송일", "이름", "그룹", "회차", "발송내역"]) # 헤더 추가
+            
+        # 데이터 추가
+        for record in record_list:
+            sheet.append_row(record)
+        return True
+    except Exception as e:
+        st.error(f"저장 실패: {e}")
+        return False
 
 # 4. 데이터 초기화
 def init_session_state():
@@ -158,41 +180,10 @@ def init_session_state():
 init_session_state()
 
 # 5. 메인 화면
-st.title("🏥 엘랑비탈 ERP v.6.3 (Smart Logistics)")
-
-# [v.6.3] 발송 가능 여부 판단 로직 (핵심)
-kr_holidays = holidays.KR()
-
-def check_delivery_date(date_obj):
-    # 1. 요일 체크 (월=0, ... 일=6)
-    weekday = date_obj.weekday()
-    if weekday == 4: return False, "⛔ **금요일 발송 금지:** 월요일 도착 위험 (냉장식품 변질 우려)"
-    if weekday == 5: return False, "⛔ **토요일 발송 불가:** 휴무일"
-    if weekday == 6: return False, "⛔ **일요일 발송 불가:** 휴무일"
-    
-    # 2. 당일 휴일 체크
-    if date_obj in kr_holidays:
-        return False, f"⛔ **휴일 발송 불가:** {kr_holidays.get(date_obj)}"
-    
-    # 3. 익일(도착일) 휴일 체크 (이게 중요!)
-    next_day = date_obj + timedelta(days=1)
-    if next_day in kr_holidays:
-        return False, f"⛔ **익일 휴일({kr_holidays.get(next_day)}):** 택배 하역장 방치 위험!"
-    
-    # 4. 명절(설날/추석) 3일 전 금지 체크
-    # (holidays 라이브러리의 명절 이름을 보고 판단)
-    for i in range(1, 4): # 1일후, 2일후, 3일후 체크
-        future_day = date_obj + timedelta(days=i)
-        if future_day in kr_holidays:
-            hol_name = kr_holidays.get(future_day)
-            if 'Seollal' in hol_name or 'Chuseok' in hol_name or '설날' in hol_name or '추석' in hol_name:
-                return False, f"⛔ **명절 물류 대란 예방:** {hol_name} 연휴 {i}일 전입니다."
-
-    return True, "✅ **발송 가능:** 안전한 날짜입니다."
-
+st.title("🏥 엘랑비탈 ERP v.6.4 (Archive)")
 col1, col2 = st.columns(2)
 
-# 회차 계산 함수 (v.6.1.1 유지)
+# 회차 계산 함수
 def calculate_round_v4(start_date_input, current_date_input, group_type):
     try:
         if not start_date_input or str(start_date_input) == 'nan':
@@ -217,15 +208,31 @@ def on_date_change():
     if 'target_date' in st.session_state:
         st.session_state.view_month = st.session_state.target_date.month
 
+# 공휴일 체크
+kr_holidays = holidays.KR()
+def check_delivery_date(date_obj):
+    weekday = date_obj.weekday()
+    if weekday == 4: return False, "⛔ **금요일 발송 금지:** 월요일 도착 위험 (냉장식품 변질 우려)"
+    if weekday == 5: return False, "⛔ **토요일 발송 불가:** 휴무일"
+    if weekday == 6: return False, "⛔ **일요일 발송 불가:** 휴무일"
+    if date_obj in kr_holidays:
+        return False, f"⛔ **휴일 발송 불가:** {kr_holidays.get(date_obj)}"
+    next_day = date_obj + timedelta(days=1)
+    if next_day in kr_holidays:
+        return False, f"⛔ **익일 휴일({kr_holidays.get(next_day)}):** 택배 하역장 방치 위험!"
+    for i in range(1, 4): 
+        future_day = date_obj + timedelta(days=i)
+        if future_day in kr_holidays:
+            hol_name = kr_holidays.get(future_day)
+            if 'Seollal' in hol_name or 'Chuseok' in hol_name or '설날' in hol_name or '추석' in hol_name:
+                return False, f"⛔ **명절 물류 대란 예방:** {hol_name} 연휴 {i}일 전입니다."
+    return True, "✅ **발송 가능:** 안전한 날짜입니다."
+
 with col1: 
     target_date = st.date_input("발송일", value=datetime.now(KST), key="target_date", on_change=on_date_change)
-    
-    # [판독 결과 표시]
     is_ok, msg = check_delivery_date(target_date)
-    if is_ok:
-        st.success(msg)
-    else:
-        st.error(msg)
+    if is_ok: st.success(msg)
+    else: st.error(msg)
 
 def get_week_info(date_obj):
     month = date_obj.month
@@ -235,14 +242,12 @@ def get_week_info(date_obj):
 week_str = get_week_info(target_date)
 month_str = f"{target_date.month}월"
 
-# [우측] 이달의 휴일 정보
 with col2:
     st.info(f"📅 **{target_date.year}년 {target_date.month}월 휴무일 정보**")
     month_holidays = []
     for date, name in kr_holidays.items():
         if date.year == target_date.year and date.month == target_date.month:
             month_holidays.append(f"• {date.day}일({date.strftime('%a')}): {name}")
-    
     if month_holidays:
         for h in month_holidays:
             st.write(h)
@@ -267,14 +272,12 @@ with c1:
         for k, v in db.items():
             if v.get('group') == "매주 발송":
                 r_num, s_date_disp = calculate_round_v4(v.get('start_date_raw'), target_date, "매주 발송")
-                
                 round_info = f" ({r_num}/12회)" 
                 if r_num > 12: round_info += " 🚨"
-                
                 note_display = f" 📌{v['note']}" if v.get('note') else ""
-                
                 if st.checkbox(f"{k}{round_info}{note_display}", v.get('default'), help=f"시작일: {s_date_disp}"): 
-                    sel_p[k] = v['items']
+                    # 체크된 항목의 이름과 회차 정보도 함께 저장 (나중에 로깅용)
+                    sel_p[k] = {'items': v['items'], 'group': v['group'], 'round': r_num}
     else:
         st.info("데이터 로딩 중...")
 
@@ -284,33 +287,51 @@ with c2:
         for k, v in db.items():
             if v.get('group') in ["격주 발송", "유방암", "울산"]:
                 r_num, s_date_disp = calculate_round_v4(v.get('start_date_raw'), target_date, "격주 발송")
-                
                 round_info = f" ({r_num}/6회)"
                 if r_num > 6: round_info += " 🚨"
-                
                 note_display = f" 📌{v['note']}" if v.get('note') else ""
                 if st.checkbox(f"{k}{round_info}{note_display}", v.get('default'), help=f"시작일: {s_date_disp}"): 
-                    sel_p[k] = v['items']
+                    sel_p[k] = {'items': v['items'], 'group': v['group'], 'round': r_num}
 
 st.divider()
 t1, t2, t3, t4, t5, t6, t7 = st.tabs(["🏷️ 라벨", "🎁 장연구원", "🧪 한책임", "📊 커드 수요량", f"🏭 생산 관리 ({week_str})", f"🗓️ 연간 일정 ({month_str})", "💊 임상/처방 관리"])
 
-# Tab 1: 라벨
+# Tab 1: 라벨 (기록 저장 기능 추가)
 with t1:
-    st.header("🖨️ 라벨 출력")
+    c_head, c_btn = st.columns([2, 1])
+    with c_head:
+        st.header("🖨️ 라벨 출력")
+    with c_btn:
+        # [v.6.4] 기록 저장 버튼
+        if st.button("📝 금일 발송 내역 저장하기", type="primary"):
+            if not sel_p:
+                st.warning("선택된 환자가 없습니다.")
+            else:
+                records = []
+                today_str = target_date.strftime('%Y-%m-%d')
+                for p_name, p_data in sel_p.items():
+                    # 발송 내역 문자열 만들기
+                    item_strs = []
+                    for item in p_data['items']:
+                         item_strs.append(f"{item['제품']}:{item['수량']}")
+                    content_str = ", ".join(item_strs)
+                    
+                    # [발송일, 이름, 그룹, 회차, 발송내역]
+                    records.append([today_str, p_name, p_data['group'], p_data['round'], content_str])
+                
+                if save_to_history(records):
+                    st.success(f"총 {len(records)}건의 발송 기록이 구글 시트(history)에 저장되었습니다!")
+                else:
+                    st.error("저장 중 오류가 발생했습니다.")
+
     if not sel_p: st.warning("환자를 선택하세요")
     else:
         cols = st.columns(2)
-        for i, (name, items) in enumerate(sel_p.items()):
+        for i, (name, data_info) in enumerate(sel_p.items()):
+            items = data_info['items']
             with cols[i%2]:
                 with st.container(border=True):
-                    p_info = st.session_state.patient_db[name]
-                    grp = p_info.get('group')
-                    s_date_raw = p_info.get('start_date_raw')
-                    
-                    calc_grp = "격주 발송" if grp in ["격주 발송", "유방암", "울산"] else "매주 발송"
-                    r_num, _ = calculate_round_v4(s_date_raw, target_date, calc_grp)
-                    
+                    r_num = data_info['round']
                     round_str = f" [{r_num}회차]" if r_num > 0 else ""
                     
                     st.markdown(f"### 🧊 {name}{round_str}")
@@ -328,7 +349,8 @@ with t1:
 with t2:
     st.header("🎁 장연구원 (개별 포장)")
     tot = {}
-    for items in sel_p.values():
+    for data_info in sel_p.values():
+        items = data_info['items']
         for x in items:
             if "혼합" not in str(x['제품']):
                 k = f"{x['제품']} {x['용량']}" if x.get('용량') else x['제품']
@@ -339,7 +361,8 @@ with t2:
 with t3:
     st.header("🧪 한책임 (혼합 제조)")
     req = {}
-    for items in sel_p.values():
+    for data_info in sel_p.values():
+        items = data_info['items']
         for x in items:
             if "혼합" in str(x['제품']): req[x['제품']] = req.get(x['제품'], 0) + x['수량']
     recipes = st.session_state.recipe_db
@@ -384,7 +407,8 @@ with t4:
     st.header("📊 커드 수요량")
     curd_pure = 0
     curd_cool = 0
-    for items in sel_p.values():
+    for data_info in sel_p.values():
+        items = data_info['items']
         for x in items:
             if x['제품'] == "커드" or x['제품'] == "계란 커드": curd_pure += x['수량']
             elif x['제품'] == "커드 시원한 것": curd_cool += x['수량']
@@ -510,31 +534,7 @@ with t6:
     st.header(f"🗓️ 연간 생산 캘린더 ({st.session_state.view_month}월)")
     sel_month = st.selectbox("월 선택", list(range(1, 13)), key="view_month")
     current_sched = st.session_state.schedule_db[sel_month]
-    
-    with st.container(border=True):
-        st.subheader("📝 연간 주요 메모 (Yearly Memos)")
-        c_memo, c_m_tool = st.columns([2, 1])
-        with c_memo:
-            if not st.session_state.yearly_memos:
-                st.info("등록된 메모가 없습니다.")
-            else:
-                for memo in st.session_state.yearly_memos:
-                    st.warning(f"📌 {memo}")
-        with c_m_tool:
-            with st.popover("메모 관리"):
-                new_memo = st.text_input("새 메모 입력")
-                if st.button("추가", key="add_memo"):
-                    if new_memo:
-                        st.session_state.yearly_memos.append(new_memo)
-                        st.rerun()
-                del_memo = st.multiselect("삭제할 메모", st.session_state.yearly_memos)
-                if st.button("삭제", key="del_memo"):
-                    for d in del_memo:
-                        st.session_state.yearly_memos.remove(d)
-                    st.rerun()
-    st.divider()
-    
-    st.subheader(f"📅 {current_sched['title']}")
+    st.subheader(f"📌 {current_sched['title']}")
     col_main, col_note = st.columns([2, 1])
     with col_main:
         st.success("🌱 **주요 생산 품목**")
