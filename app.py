@@ -25,7 +25,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.6.4")
+            st.title("🔒 엘랑비탈 ERP v.6.5")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -91,24 +91,32 @@ def load_data_from_sheet():
         st.error(f"❌ 데이터 로딩 실패: {e}")
         return {}
 
-# [v.6.4] 이력 저장 함수
+# 이력 저장 함수
 def save_to_history(record_list):
     try:
         client = get_gspread_client()
-        # history 시트가 없으면 생성 시도, 있으면 열기
         try:
             sheet = client.open("vpmi_data").worksheet("history")
         except:
             sheet = client.open("vpmi_data").add_worksheet(title="history", rows="1000", cols="10")
-            sheet.append_row(["발송일", "이름", "그룹", "회차", "발송내역"]) # 헤더 추가
+            sheet.append_row(["발송일", "이름", "그룹", "회차", "발송내역"]) # 헤더
             
-        # 데이터 추가
         for record in record_list:
             sheet.append_row(record)
         return True
     except Exception as e:
         st.error(f"저장 실패: {e}")
         return False
+
+# [v.6.5] 이력 조회 함수
+def load_history_data():
+    try:
+        client = get_gspread_client()
+        sheet = client.open("vpmi_data").worksheet("history")
+        data = sheet.get_all_records()
+        return pd.DataFrame(data)
+    except:
+        return pd.DataFrame()
 
 # 4. 데이터 초기화
 def init_session_state():
@@ -180,7 +188,7 @@ def init_session_state():
 init_session_state()
 
 # 5. 메인 화면
-st.title("🏥 엘랑비탈 ERP v.6.4 (Archive)")
+st.title("🏥 엘랑비탈 ERP v.6.5 (History)")
 col1, col2 = st.columns(2)
 
 # 회차 계산 함수
@@ -276,7 +284,6 @@ with c1:
                 if r_num > 12: round_info += " 🚨"
                 note_display = f" 📌{v['note']}" if v.get('note') else ""
                 if st.checkbox(f"{k}{round_info}{note_display}", v.get('default'), help=f"시작일: {s_date_disp}"): 
-                    # 체크된 항목의 이름과 회차 정보도 함께 저장 (나중에 로깅용)
                     sel_p[k] = {'items': v['items'], 'group': v['group'], 'round': r_num}
     else:
         st.info("데이터 로딩 중...")
@@ -294,15 +301,14 @@ with c2:
                     sel_p[k] = {'items': v['items'], 'group': v['group'], 'round': r_num}
 
 st.divider()
-t1, t2, t3, t4, t5, t6, t7 = st.tabs(["🏷️ 라벨", "🎁 장연구원", "🧪 한책임", "📊 커드 수요량", f"🏭 생산 관리 ({week_str})", f"🗓️ 연간 일정 ({month_str})", "💊 임상/처방 관리"])
+t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(["🏷️ 라벨", "🎁 장연구원", "🧪 한책임", "📊 커드 수요량", f"🏭 생산 관리 ({week_str})", f"🗓️ 연간 일정 ({month_str})", "💊 임상/처방 관리", "📂 발송 이력"])
 
-# Tab 1: 라벨 (기록 저장 기능 추가)
+# Tab 1: 라벨
 with t1:
     c_head, c_btn = st.columns([2, 1])
     with c_head:
         st.header("🖨️ 라벨 출력")
     with c_btn:
-        # [v.6.4] 기록 저장 버튼
         if st.button("📝 금일 발송 내역 저장하기", type="primary"):
             if not sel_p:
                 st.warning("선택된 환자가 없습니다.")
@@ -310,19 +316,16 @@ with t1:
                 records = []
                 today_str = target_date.strftime('%Y-%m-%d')
                 for p_name, p_data in sel_p.items():
-                    # 발송 내역 문자열 만들기
                     item_strs = []
                     for item in p_data['items']:
                          item_strs.append(f"{item['제품']}:{item['수량']}")
                     content_str = ", ".join(item_strs)
-                    
-                    # [발송일, 이름, 그룹, 회차, 발송내역]
                     records.append([today_str, p_name, p_data['group'], p_data['round'], content_str])
                 
                 if save_to_history(records):
-                    st.success(f"총 {len(records)}건의 발송 기록이 구글 시트(history)에 저장되었습니다!")
+                    st.success(f"총 {len(records)}건 저장 완료!")
                 else:
-                    st.error("저장 중 오류가 발생했습니다.")
+                    st.error("저장 실패")
 
     if not sel_p: st.warning("환자를 선택하세요")
     else:
@@ -345,7 +348,7 @@ with t1:
                     st.markdown("---")
                     st.write("🏥 **엘랑비탈바이오**")
 
-# Tab 2~7 (기존 로직 유지)
+# Tab 2~7 (기존 유지)
 with t2:
     st.header("🎁 장연구원 (개별 포장)")
     tot = {}
@@ -534,7 +537,31 @@ with t6:
     st.header(f"🗓️ 연간 생산 캘린더 ({st.session_state.view_month}월)")
     sel_month = st.selectbox("월 선택", list(range(1, 13)), key="view_month")
     current_sched = st.session_state.schedule_db[sel_month]
-    st.subheader(f"📌 {current_sched['title']}")
+    
+    with st.container(border=True):
+        st.subheader("📝 연간 주요 메모 (Yearly Memos)")
+        c_memo, c_m_tool = st.columns([2, 1])
+        with c_memo:
+            if not st.session_state.yearly_memos:
+                st.info("등록된 메모가 없습니다.")
+            else:
+                for memo in st.session_state.yearly_memos:
+                    st.warning(f"📌 {memo}")
+        with c_m_tool:
+            with st.popover("메모 관리"):
+                new_memo = st.text_input("새 메모 입력")
+                if st.button("추가", key="add_memo"):
+                    if new_memo:
+                        st.session_state.yearly_memos.append(new_memo)
+                        st.rerun()
+                del_memo = st.multiselect("삭제할 메모", st.session_state.yearly_memos)
+                if st.button("삭제", key="del_memo"):
+                    for d in del_memo:
+                        st.session_state.yearly_memos.remove(d)
+                    st.rerun()
+    st.divider()
+    
+    st.subheader(f"📅 {current_sched['title']}")
     col_main, col_note = st.columns([2, 1])
     with col_main:
         st.success("🌱 **주요 생산 품목**")
@@ -583,3 +610,33 @@ with t7:
                 if st.form_submit_button("수정 저장"):
                     st.session_state.regimen_db[selected_regimen] = updated_content
                     st.rerun()
+
+# [v.6.5] Tab 8: 발송 이력 (조회 & 다운로드)
+with t8:
+    st.header("📂 발송 이력 (History Archive)")
+    
+    if st.button("🔄 이력 새로고침"):
+        st.rerun()
+
+    # 데이터 로드
+    history_df = load_history_data()
+    
+    if not history_df.empty:
+        # 최신순 정렬 (가정: A열이 날짜일 경우)
+        try:
+            history_df = history_df.sort_values(by="발송일", ascending=False)
+        except:
+            pass
+            
+        st.dataframe(history_df, use_container_width=True)
+        
+        # 다운로드 버튼
+        csv = history_df.to_csv(index=False).encode('utf-8-sig')
+        st.download_button(
+            label="📥 전체 이력 엑셀(CSV)로 다운로드",
+            data=csv,
+            file_name=f"vpmi_history_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv"
+        )
+    else:
+        st.info("아직 저장된 발송 이력이 없습니다. [라벨] 탭에서 '저장하기'를 눌러보세요!")
