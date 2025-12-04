@@ -25,7 +25,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.6.5")
+            st.title("🔒 엘랑비탈 ERP v.7.0")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -49,6 +49,25 @@ def load_data_from_sheet():
         sheet = client.open("vpmi_data").sheet1
         data = sheet.get_all_records()
         
+        # [수정] 기본 용량 사전 (표준 용량이 정해진 것들)
+        default_caps = {
+            "시원한 것": "280ml",
+            "마시는 것": "280ml",
+            "커드 시원한 것": "280ml",
+            "인삼 사이다": "280ml",
+            "EX": "280ml",
+            "인삼대사체(PAGI)": "50ml",
+            "인삼대사체(PAGI) 항암용": "50ml",
+            "인삼대사체(PAGI) 뇌질환용": "50ml",
+            "개망초(EDF)": "50ml",
+            "장미꽃 대사체": "50ml",
+            "애기똥풀 대사체": "50ml",
+            "송이 대사체": "50ml",
+            "표고버섯 대사체": "50ml",
+            "커드": "150g",
+            "계란 커드": "150g"
+        }
+
         db = {}
         for row in data:
             name = row['이름']
@@ -60,11 +79,16 @@ def load_data_from_sheet():
                 if ':' in item:
                     p_name, p_qty = item.split(':')
                     clean_name = p_name.strip()
+                    
                     if clean_name == "PAGI 희석액": clean_name = "인삼대사체(PAGI) 항암용"
+                    
+                    # [v.7.0 수정] 용량 매칭: 없으면 빈칸("")으로 둠 (더이상 '표준' 안씀)
+                    cap = default_caps.get(clean_name, "")
+                    
                     items_list.append({
                         "제품": clean_name, 
                         "수량": int(p_qty.strip()),
-                        "용량": "표준" 
+                        "용량": cap 
                     })
             
             round_val = row.get('회차')
@@ -91,7 +115,7 @@ def load_data_from_sheet():
         st.error(f"❌ 데이터 로딩 실패: {e}")
         return {}
 
-# 이력 저장 함수
+# [v.6.5] 발송 이력 저장
 def save_to_history(record_list):
     try:
         client = get_gspread_client()
@@ -99,8 +123,8 @@ def save_to_history(record_list):
             sheet = client.open("vpmi_data").worksheet("history")
         except:
             sheet = client.open("vpmi_data").add_worksheet(title="history", rows="1000", cols="10")
-            sheet.append_row(["발송일", "이름", "그룹", "회차", "발송내역"]) # 헤더
-            
+            sheet.append_row(["발송일", "이름", "그룹", "회차", "발송내역"])
+        
         for record in record_list:
             sheet.append_row(record)
         return True
@@ -108,11 +132,27 @@ def save_to_history(record_list):
         st.error(f"저장 실패: {e}")
         return False
 
-# [v.6.5] 이력 조회 함수
-def load_history_data():
+# [v.7.0] 생산 이력 저장 함수
+def save_production_record(record):
     try:
         client = get_gspread_client()
-        sheet = client.open("vpmi_data").worksheet("history")
+        try:
+            sheet = client.open("vpmi_data").worksheet("production")
+        except:
+            sheet = client.open("vpmi_data").add_worksheet(title="production", rows="1000", cols="10")
+            sheet.append_row(["생산일", "종류", "원재료", "투입량(kg)", "비율", "스타터총량", "정제수", "조성액", "올리고당", "비고"])
+            
+        sheet.append_row(record)
+        return True
+    except Exception as e:
+        st.error(f"생산 이력 저장 실패: {e}")
+        return False
+
+# 이력 조회 함수
+def load_history_data(sheet_name):
+    try:
+        client = get_gspread_client()
+        sheet = client.open("vpmi_data").worksheet(sheet_name)
         data = sheet.get_all_records()
         return pd.DataFrame(data)
     except:
@@ -167,13 +207,6 @@ def init_session_state():
         r_db = {}
         r_db["계란커드 스타터 [혼합]"] = {"desc": "대사체 단순 혼합", "batch_size": 9, "materials": {"개망초 대사체": 8, "아카시아잎 대사체": 1}}
         r_db["계란커드 스타터 [합제]"] = {"desc": "원물 8:1 혼합 대사", "batch_size": 9, "materials": {"개망초꽃(원물)": 8, "아카시아잎(원물)": 1, "EX": 36}}
-        r_db["혼합 [E.R.P.V.P]"] = {"desc": "6배수 혼합/14병", "batch_size": 14, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 12, "송이대사체 (50ml)": 6, "장미꽃 대사체 (50ml)": 6, "Vitamin C (3000mg)": 14, "SiO2 (1ml)": 14, "EX": 900}}
-        r_db["혼합 [P.V.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 1, "Vitamin C (3000mg)": 1, "EX": 100}}
-        r_db["혼합 [P.P.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
-        r_db["혼합 [Ex.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 100}}
-        r_db["혼합 [R.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"장미꽃 대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "인삼사이다": 50}}
-        r_db["혼합 [Edf.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"개망초(EDF) (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "인삼사이다": 50}}
-        r_db["혼합 [P.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
         st.session_state.recipe_db = r_db
     
     if 'regimen_db' not in st.session_state:
@@ -188,7 +221,7 @@ def init_session_state():
 init_session_state()
 
 # 5. 메인 화면
-st.title("🏥 엘랑비탈 ERP v.6.5 (History)")
+st.title("🏥 엘랑비탈 ERP v.7.0 (Production)")
 col1, col2 = st.columns(2)
 
 # 회차 계산 함수
@@ -301,7 +334,7 @@ with c2:
                     sel_p[k] = {'items': v['items'], 'group': v['group'], 'round': r_num}
 
 st.divider()
-t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(["🏷️ 라벨", "🎁 장연구원", "🧪 한책임", "📊 커드 수요량", f"🏭 생산 관리 ({week_str})", f"🗓️ 연간 일정 ({month_str})", "💊 임상/처방 관리", "📂 발송 이력"])
+t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs(["🏷️ 라벨", "🎁 장연구원", "🧪 한책임", "📊 커드 수요량", f"🏭 생산 관리 ({week_str})", f"🗓️ 연간 일정 ({month_str})", "💊 임상/처방 관리", "📂 발송 이력", "🏭 생산 이력"])
 
 # Tab 1: 라벨
 with t1:
@@ -343,7 +376,8 @@ with t1:
                     for x in items:
                         chk = "✅" if "혼합" in str(x['제품']) else "□"
                         display_prod = x['제품'].replace(" 항암용", "")
-                        vol_str = f" ({x['용량']})" if x.get('용량') else ""
+                        # [v.7.0 수정] 용량 정보가 있으면 표시, 없으면 생략
+                        vol_str = f" ({x['용량']})" if x['용량'] else ""
                         st.markdown(f"**{chk} {display_prod}** {x['수량']}개{vol_str}")
                     st.markdown("---")
                     st.write("🏥 **엘랑비탈바이오**")
@@ -589,6 +623,7 @@ with t6:
                     st.session_state.schedule_db[sel_month]['note'] = new_note
                     st.rerun()
 
+# Tab 7: 임상/처방 관리
 with t7:
     st.header("💊 환자별 맞춤 처방 관리")
     regimen_names = list(st.session_state.regimen_db.keys())
@@ -611,32 +646,94 @@ with t7:
                     st.session_state.regimen_db[selected_regimen] = updated_content
                     st.rerun()
 
-# [v.6.5] Tab 8: 발송 이력 (조회 & 다운로드)
+# Tab 8: 발송 이력
 with t8:
     st.header("📂 발송 이력 (History Archive)")
-    
     if st.button("🔄 이력 새로고침"):
         st.rerun()
-
-    # 데이터 로드
-    history_df = load_history_data()
+    
+    history_df = load_history_data("history") # history 시트 로드
     
     if not history_df.empty:
-        # 최신순 정렬 (가정: A열이 날짜일 경우)
-        try:
-            history_df = history_df.sort_values(by="발송일", ascending=False)
-        except:
-            pass
-            
         st.dataframe(history_df, use_container_width=True)
-        
-        # 다운로드 버튼
         csv = history_df.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            label="📥 전체 이력 엑셀(CSV)로 다운로드",
-            data=csv,
-            file_name=f"vpmi_history_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
-        )
+        st.download_button("📥 전체 이력 다운로드", csv, f"vpmi_history_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
     else:
-        st.info("아직 저장된 발송 이력이 없습니다. [라벨] 탭에서 '저장하기'를 눌러보세요!")
+        st.info("아직 저장된 이력이 없습니다.")
+
+# [v.7.0] Tab 9: 생산 이력
+with t9:
+    st.header("🏭 생산 이력 (Production Archive)")
+    
+    # 1. 생산 기록 입력 폼
+    with st.container(border=True):
+        st.subheader("📝 생산 기록 입력")
+        c1, c2, c3 = st.columns(3)
+        
+        p_date = c1.date_input("생산일", datetime.now(KST))
+        p_type = c2.selectbox("종류", ["일반 식물 대사체", "무염김치", "커드(일반)", "계란 커드", "기타"])
+        p_name = c3.text_input("원재료명 (예: 애기똥풀, 아카시아)")
+        
+        c4, c5, c6 = st.columns(3)
+        p_weight = c4.number_input("원재료 무게 (kg)", 0.0, 1000.0, 1.0, step=0.1)
+        p_ratio = c5.selectbox("배합 비율 (원물:액체)", ["1:4", "1:6", "1:8", "1:10", "1:12", "기타"])
+        p_batch = c6.number_input("생산 수량 (통/개)", 1, 100, 1)
+        
+        # [자동 계산기]
+        st.markdown("---")
+        st.caption("🧪 **배합 시뮬레이션 (자동 계산)**")
+        
+        # 비율 파싱
+        try:
+            ratio_val = int(p_ratio.split(':')[1])
+        except:
+            ratio_val = 4 # 기본값
+        
+        total_liquid = p_weight * ratio_val
+        
+        # 정제수 100 : 조성액 3.5 : 올리고당 2.8 -> 총 106.3
+        # 비율 계산
+        base_unit = total_liquid / 106.3
+        calc_water = base_unit * 100
+        calc_vpmi = base_unit * 3.5
+        calc_oligo = base_unit * 2.8
+        
+        sc1, sc2, sc3, sc4 = st.columns(4)
+        sc1.metric("총 액체량", f"{total_liquid:.1f} kg")
+        sc2.metric("💧 정제수", f"{calc_water:.2f} kg")
+        sc3.metric("🧪 조성액(VPMI)", f"{calc_vpmi:.2f} kg")
+        sc4.metric("🍯 올리고당", f"{calc_oligo:.2f} kg")
+        
+        p_note = st.text_input("비고 (특이사항, pH 등)")
+        
+        if st.button("💾 생산 기록 저장", type="primary"):
+            # ["생산일", "종류", "원재료", "투입량(kg)", "비율", "스타터총량", "정제수", "조성액", "올리고당", "비고"]
+            record = [
+                p_date.strftime("%Y-%m-%d"),
+                p_type,
+                p_name,
+                p_weight,
+                p_ratio,
+                f"{total_liquid:.2f}",
+                f"{calc_water:.2f}",
+                f"{calc_vpmi:.2f}",
+                f"{calc_oligo:.2f}",
+                p_note
+            ]
+            if save_production_record(record):
+                st.success("생산 기록이 저장되었습니다!")
+
+    st.divider()
+    
+    # 2. 이력 조회
+    if st.button("🔄 생산 이력 새로고침"):
+        st.rerun()
+        
+    prod_df = load_history_data("production") # production 시트 로드
+    
+    if not prod_df.empty:
+        st.dataframe(prod_df, use_container_width=True)
+        csv_prod = prod_df.to_csv(index=False).encode('utf-8-sig')
+        st.download_button("📥 생산 이력 다운로드", csv_prod, f"vpmi_production_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
+    else:
+        st.info("아직 저장된 생산 이력이 없습니다.")
