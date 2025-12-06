@@ -26,7 +26,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.7.9")
+            st.title("🔒 엘랑비탈 ERP v.7.9.1")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -50,7 +50,6 @@ def load_data_from_sheet():
         sheet = client.open("vpmi_data").sheet1
         data = sheet.get_all_records()
         
-        # 기본 용량 사전
         default_caps = {
             "시원한 것": "280ml", "마시는 것": "280ml", "커드 시원한 것": "280ml",
             "인삼 사이다": "300ml", "EX": "280ml",
@@ -72,21 +71,17 @@ def load_data_from_sheet():
                     p_name, p_qty = item.split(':')
                     clean_name = p_name.strip()
                     
-                    # [v.7.9 명칭 자동 통합 로직]
                     if clean_name == "PAGI 희석액": clean_name = "인삼대사체(PAGI) 항암용"
-                    if clean_name == "커드": clean_name = "계란 커드"  # '커드'라고 쓰면 '계란 커드'로 통합
+                    if clean_name == "커드": clean_name = "계란 커드"
                     
                     cap = default_caps.get(clean_name, "")
                     items_list.append({"제품": clean_name, "수량": int(p_qty.strip()), "용량": cap})
             
             round_val = row.get('회차')
-            if round_val is None or str(round_val).strip() == "": 
-                round_num = 1 
+            if round_val is None or str(round_val).strip() == "": round_num = 1 
             else:
-                try: 
-                    round_num = int(str(round_val).replace('회', '').replace('주', '').strip())
-                except: 
-                    round_num = 1
+                try: round_num = int(str(round_val).replace('회', '').replace('주', '').strip())
+                except: round_num = 1
 
             start_date_str = str(row.get('시작일', '')).strip()
 
@@ -172,8 +167,8 @@ def init_session_state():
 
     if 'schedule_db' not in st.session_state:
         st.session_state.schedule_db = {
-            1: {"title": "1월 (JAN)", "main": ["동백꽃", "인삼사이다", "유기농 우유 커드"], "note": "동백꽃 pH 3.8~4.0 도달 시 종료"},
-            2: {"title": "2월 (FEB)", "main": ["갈대뿌리", "당근"], "note": "갈대뿌리 수율 약 37%"},
+            1: {"title": "1월 (JAN)", "main": ["동백꽃 (대사/필터링)", "인삼사이다 (병입)", "유기농 우유 커드"], "note": "동백꽃 pH 3.8~4.0 도달 시 종료"},
+            2: {"title": "2월 (FEB)", "main": ["갈대뿌리 (채취/건조/대사)", "당근 (대사)"], "note": "갈대뿌리 수율 약 37%"},
             3: {"title": "3월 (MAR)", "main": ["봄꽃 대사", "표고버섯"], "note": "꽃:줄기 1:1"},
             4: {"title": "4월 (APR)", "main": ["애기똥풀", "등나무꽃"], "note": "애기똥풀 전초"},
             5: {"title": "5월 (MAY)", "main": ["개망초+아카시아 합제", "아카시아꽃", "뽕잎"], "note": "계란커드 스타터용"},
@@ -195,7 +190,6 @@ def init_session_state():
             "고춧가루", "찹쌀가루", "새우젓", "멸치액젓", "올리고당", "조성액", "EX", "정제수",
             "인삼", "동백꽃", "표고버섯", "개망초", "아카시아 꽃"
         ]
-        
         full_list = [
             "개망초", "개망초잎", "개망초꽃", "개망초가루", "아카시아 꽃", "아카시아 잎", "아카시아 꽃/잎", 
             "애기똥풀 꽃", "애기똥풀 꽃/줄기", "동백꽃", "메주콩", "백태", "인삼", "수삼-5년근", "산양유", "우유", 
@@ -206,7 +200,6 @@ def init_session_state():
             "명태머리", "굵은멸치", "흑새우", "다시마", "냉동블루베리", "슈가", "원당", "이소말토 올리고당", "프락토 올리고당",
             "고운 고춧가루", "굵은 고춧가루", "상황버섯", "영지버섯", "꽁치젓", "메가리젓", "어성초가루", "당두충가루"
         ]
-        
         sorted_others = sorted(list(set(full_list) - set(priority_list)))
         st.session_state.raw_material_list = priority_list + sorted_others
 
@@ -227,14 +220,6 @@ def init_session_state():
         r_db["계란커드 스타터 [혼합]"] = {"desc": "대사체 단순 혼합", "batch_size": 9, "materials": {"개망초 대사체": 8, "아카시아잎 대사체": 1}}
         r_db["계란커드 스타터 [합제]"] = {"desc": "원물 8:1 혼합 대사", "batch_size": 9, "materials": {"개망초꽃(원물)": 8, "아카시아잎(원물)": 1, "EX": 36}}
         r_db["철원산삼 대사체"] = {"desc": "1:8 비율", "batch_size": 9, "materials": {"철원산삼": 1, "EX": 8}}
-        
-        r_db["혼합 [E.R.P.V.P]"] = {"desc": "6배수 혼합/14병", "batch_size": 14, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 12, "송이대사체 (50ml)": 6, "장미꽃 대사체 (50ml)": 6, "Vitamin C (3000mg)": 14, "SiO2 (1ml)": 14, "EX": 900}}
-        r_db["혼합 [P.V.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 1, "Vitamin C (3000mg)": 1, "EX": 100}}
-        r_db["혼합 [P.P.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
-        r_db["혼합 [Ex.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 100}}
-        r_db["혼합 [R.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"장미꽃 대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "인삼사이다": 50}}
-        r_db["혼합 [Edf.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"개망초(EDF) (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "인삼사이다": 50}}
-        r_db["혼합 [P.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
         st.session_state.recipe_db = r_db
     
     if 'regimen_db' not in st.session_state:
@@ -249,7 +234,7 @@ def init_session_state():
 init_session_state()
 
 # 5. 메인 화면
-st.title("🏥 엘랑비탈 ERP v.7.9 (Consolidated)")
+st.title("🏥 엘랑비탈 ERP v.7.9.1 (Scale-up)")
 col1, col2 = st.columns(2)
 
 def calculate_round_v4(start_date_input, current_date_input, group_type):
@@ -268,8 +253,21 @@ def on_date_change():
     if 'target_date' in st.session_state:
         st.session_state.view_month = st.session_state.target_date.month
 
+kr_holidays = holidays.KR()
+def check_delivery_date(date_obj):
+    weekday = date_obj.weekday()
+    if weekday == 4: return False, "⛔ **금요일 발송 금지**"
+    if weekday >= 5: return False, "⛔ **주말 발송 불가**"
+    if date_obj in kr_holidays: return False, f"⛔ **휴일({kr_holidays.get(date_obj)})**"
+    next_day = date_obj + timedelta(days=1)
+    if next_day in kr_holidays: return False, f"⛔ **익일 휴일**"
+    return True, "✅ **발송 가능**"
+
 with col1: 
     target_date = st.date_input("발송일", value=datetime.now(KST), key="target_date", on_change=on_date_change)
+    is_ok, msg = check_delivery_date(target_date)
+    if is_ok: st.success(msg)
+    else: st.error(msg)
 
 def get_week_info(date_obj):
     month = date_obj.month
@@ -278,6 +276,13 @@ def get_week_info(date_obj):
 
 week_str = get_week_info(target_date)
 month_str = f"{target_date.month}월"
+
+with col2:
+    st.info(f"📅 **{target_date.year}년 {target_date.month}월 휴무일**")
+    month_holidays = [f"• {d.day}일: {n}" for d, n in kr_holidays.items() if d.year == target_date.year and d.month == target_date.month]
+    if month_holidays:
+        for h in month_holidays: st.write(h)
+    else: st.write("• 휴일 없음")
 
 st.divider()
 
@@ -313,7 +318,7 @@ with c2:
 st.divider()
 t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 = st.tabs(["🏷️ 라벨", "🎁 장연구원", "🧪 한책임", "📊 커드 수요량", f"🏭 생산 관리 ({week_str})", f"🗓️ 연간 일정 ({month_str})", "💊 임상/처방", "📂 발송 이력", "🏭 생산 이력", "🔬 대사/pH 관리"])
 
-# Tab 1: 라벨
+# Tab 1~4 (기존 유지)
 with t1:
     c_head, c_btn = st.columns([2, 1])
     with c_head: st.header("🖨️ 라벨 출력")
@@ -410,7 +415,6 @@ with t4:
     for data_info in sel_p.values():
         items = data_info['items']
         for x in items:
-            # [v.7.9] '커드' or '계란 커드' 통합 집계
             if x['제품'] == "계란 커드" or x['제품'] == "커드": 
                 curd_pure += x['수량']
             elif x['제품'] == "커드 시원한 것": 
@@ -428,122 +432,86 @@ with t4:
     st.info(f"🧀 **총 필요 커드:** 약 {total_kg:.2f} kg")
     st.success(f"🥛 **필요 우유:** 약 {math.ceil(milk)}통")
 
-# Tab 5~10 (기존 로직 유지)
+# [v.7.9.1] Tab 5: 생산 관리 (스케일업 & 디테일)
 with t5:
     st.header(f"🏭 생산 관리 ({week_str})")
+    
+    with st.expander("🥛 **커드 생산 시뮬레이터 (Capa Planning)**", expanded=True):
+        c_capa1, c_capa2 = st.columns(2)
+        with c_capa1:
+            batch_milk_vol = st.number_input("1회 생산 우유량 (통)", 1, 100, 30, help="현재 최대 30통")
+            prod_freq = st.slider("주간 생산 횟수 (Frequency)", 1, 7, 1, help="생산 횟수를 늘려 병목 해결")
+        with c_capa2:
+            target_product = st.radio("생산 목표 (Target)", ["계란 커드 (완제품)", "일반 커드 (중간재/시원한것용)"])
+
+        # 공통 계산
+        milk_kg_per_batch = batch_milk_vol * 2.3
+        total_milk_weekly = milk_kg_per_batch * prod_freq
+        
+        if target_product == "계란 커드 (완제품)":
+            # 레시피: 우유:계란=4:1 -> 총중량의 20%는 계란
+            egg_kg_per_batch = milk_kg_per_batch / 4
+            total_batch_kg = milk_kg_per_batch + egg_kg_per_batch
+            
+            # 스타터 비율 (기본 25%)
+            starter_ratio = st.number_input("스타터 투입 비율 (%)", 0, 100, 25)
+            starter_kg = total_batch_kg * (starter_ratio / 100)
+            
+            # 생산량 예측 (총 중량 기준 약 20% 수율 가정 - 보수적)
+            # 실제로는 우유+계란+스타터 무게의 일정 비율이 커드가 됨
+            # 기존 로직: 우유 * 0.22 -> 여기선 좀 더 정교하게
+            # 계란이 들어가면 고형분 증가 -> 수율 상승 예상. 
+            # 안전하게 (우유+계란) 무게의 25%로 잡음
+            est_yield_kg = total_batch_kg * 0.25 
+            est_count = int(est_yield_kg * 1000 / 150)
+            
+            st.markdown("---")
+            c_r1, c_r2 = st.columns(2)
+            c_r1.info(f"📊 **1회 생산 예상:** 계란 커드 약 {est_count}개 ({est_yield_kg:.1f} kg)")
+            c_r2.success(f"🗓️ **주간 총 생산 ({prod_freq}회):** 계란 커드 약 {est_count * prod_freq}개")
+            
+            st.markdown("#### 🧪 스타터 준비 (Starter Prep)")
+            starter_type = st.selectbox("스타터 종류 선택", ["개망초/아카시아 (8:1)", "시원한 것 (냉동)", "마시는 것 (냉동)", "시원한 것 (생)", "마시는 것 (생)"])
+            st.write(f"**필요 스타터 양:** {starter_kg:.2f} kg")
+            
+            if "냉동" in starter_type:
+                sugar_amount = starter_kg * 0.028
+                st.warning(f"❄️ **냉동 스타터 회복 공정 필수!**")
+                st.write(f"1. 전날 해동 후 **혼합 올리고당 {sugar_amount*1000:.1f} g** (2.8%) 투입")
+                st.write(f"2. 하루 상온 대사 (유산균 활성 회복)")
+            
+            st.error("⚠️ **계란 커드 공정 주의사항 (CCP)**")
+            st.write("- **신속 파각:** 온도 상승 방지")
+            st.write("- **이물질 관리:** 껍질 혼입 절대 금지 (필터링 철저)")
+            st.write("- **교차 오염:** 계란 만진 손/도구 세척 후 타 공정 진행")
+
+        else: # 일반 커드
+            starter_ratio = st.slider("스타터 비율 (%)", 10, 20, 15)
+            starter_kg = milk_kg_per_batch * (starter_ratio / 100)
+            
+            est_yield_kg = milk_kg_per_batch * 0.22 # 일반적인 수율
+            
+            st.markdown("---")
+            c_r1, c_r2 = st.columns(2)
+            c_r1.info(f"📊 **1회 생산 예상:** 일반 커드 약 {est_yield_kg:.1f} kg")
+            c_r2.success(f"🗓️ **주간 총 생산 ({prod_freq}회):** 일반 커드 약 {est_yield_kg * prod_freq:.1f} kg")
+            
+            st.write(f"**필요 스타터 양:** {starter_kg:.2f} kg")
+            if starter_kg > 0:
+                st.caption("냉동 스타터 사용 시 올리고당 2.8% 추가 및 상온 대사 권장")
+
     st.markdown("---")
-    st.markdown("#### 1️⃣ 원재료 투입")
+    st.markdown("#### 1️⃣ 원재료 투입 (기본 계산기)")
+    # (기존 계산기 로직 유지 - 필요시 사용)
     col_in1, col_in2, col_in3 = st.columns(3)
     with col_in1: in_kimchi = st.number_input("무염김치 (봉지)", 0, value=3)
-    with col_in2: 
-        in_milk_reg = st.number_input("일반커드 우유 (통)", 0, value=30)
-        starter_15 = (in_milk_reg * 2.3) * 0.15
-        oligo_for_cool = starter_15 * 0.028 
-        total_starter_input = starter_15 + oligo_for_cool
-        st.caption(f"🥣 **필요 스타터**")
-        st.caption(f"- 냉동 시원한것 (15%):")
-        st.caption(f"  └ 원액 {starter_15:.1f}kg + 올리고당 {oligo_for_cool:.3f}kg")
-    with col_in3: 
-        in_milk_egg = st.number_input("계란커드 우유 (통)", 0, value=0)
-        st.markdown("👇 **스타터 비율 설정 (합계 25% 권장)**")
-        c_s1, c_s2 = st.columns(2)
-        daisy_pct = c_s1.number_input("개망초/아카시아 (%)", 0, 100, 20)
-        cool_pct = c_s2.number_input("시원한/마시는것 (%)", 0, 100, 5)
+    with col_in2: in_milk_reg = st.number_input("일반커드 우유 (통/기본)", 0, value=30)
+    with col_in3: in_milk_egg = st.number_input("계란커드 우유 (통/기본)", 0, value=0)
     
-    prod_cool_cnt = in_kimchi * 215 
-    prod_cool_kg = prod_cool_cnt * 0.274 
-    prod_reg_curd_kg = in_milk_reg * 2.3 * 0.217 
-    milk_weight = in_milk_egg * 2.3
-    egg_weight = milk_weight / 4
-    total_base_weight = milk_weight + egg_weight
-    req_egg_cnt = int(egg_weight / 0.045)
-    starter_daisy_mix_kg = total_base_weight * (daisy_pct / 100)
-    starter_cool_kg = total_base_weight * (cool_pct / 100)
-    req_daisy = starter_daisy_mix_kg * (8/9)
-    req_acacia = starter_daisy_mix_kg * (1/9)
-    prod_egg_curd_kg = milk_weight * 0.22 
-    prod_egg_curd_cnt = int(prod_egg_curd_kg * 1000 / 150)
-    req_cool_for_curd = prod_reg_curd_kg * 5.5 
-    total_mix_kg = prod_reg_curd_kg + req_cool_for_curd
-    mix_cnt = int(total_mix_kg * 1000 / 260)
-    remain_cool_kg = prod_cool_kg - req_cool_for_curd - starter_cool_kg
-    remain_cool_cnt = int(remain_cool_kg * 1000 / 274)
+    # (기존 단순 계산 로직 생략 - 위 시뮬레이터가 대체함)
+    st.caption("※ 상세 시뮬레이션은 위 '커드 생산 시뮬레이터'를 이용하세요.")
 
-    st.markdown("---")
-    st.markdown("#### 2️⃣ 중간 생산물 & 배분 (Weight)")
-    c_mid1, c_mid2, c_mid3 = st.columns(3)
-    with c_mid1:
-        st.info("🥬 **시원한 것 (총생산)**")
-        st.metric("총 중량", f"{prod_cool_kg:.1f} kg")
-        st.caption(f"무염김치 {in_kimchi}봉 기준")
-    with c_mid2:
-        st.warning("🥣 **중간 투입 (소모 시원한 것)**")
-        total_consumed = req_cool_for_curd + starter_cool_kg
-        st.metric("총 소모량", f"{total_consumed:.1f} kg")
-        st.caption(f"└ 일반커드용: {req_cool_for_curd:.1f} kg")
-        st.caption(f"└ 계란커드용: {starter_cool_kg:.1f} kg")
-    with c_mid3:
-        st.success("🥚 **계란 커드 (재료 계산)**")
-        st.write(f"- 우유: **{milk_weight:.1f} kg**")
-        st.write(f"- 계란: **{egg_weight:.1f} kg** (약 {req_egg_cnt}개)")
-        st.markdown("---")
-        st.write(f"🧪 **스타터 ({daisy_pct + cool_pct}%) 상세**")
-        st.caption(f"1. 개망초/아카시아 ({daisy_pct}%): **{starter_daisy_mix_kg:.1f} kg**")
-        st.caption(f"   └ 개망초: {req_daisy:.2f} kg")
-        st.caption(f"   └ 아카시아: {req_acacia:.2f} kg")
-        st.caption(f"2. 시원한/마시는것 ({cool_pct}%): **{starter_cool_kg:.1f} kg**")
-    st.markdown("---")
-    st.markdown("#### 3️⃣ 최종 완제품 (Final Count)")
-    c_fin1, c_fin2, c_fin3 = st.columns(3)
-    with c_fin1:
-        st.info("🧴 **시원한 것 (최종 잔여)**")
-        if remain_cool_kg < 0:
-            st.metric("상태", "🚨 재료 부족")
-            st.error(f"{abs(remain_cool_kg):.1f} kg 부족합니다!")
-        else:
-            st.metric("생산 수량 (274g)", f"{remain_cool_cnt} 병")
-            st.caption(f"잔여 {remain_cool_kg:.1f} kg")
-    with c_fin2:
-        st.error("🥣 **커드 시원한 것**")
-        st.metric("생산 수량 (260g)", f"{mix_cnt} 병")
-        st.caption(f"총 {total_mix_kg:.1f} kg")
-    with c_fin3:
-        st.warning("🥚 **계란 커드**")
-        st.metric("생산 수량 (150g)", f"{prod_egg_curd_cnt} 개")
-        st.caption(f"총 {prod_egg_curd_kg:.1f} kg")
-    
-    st.markdown("---")
-    with st.expander("🗓️ **월간 생산 계획 시뮬레이터** (유압기 사용)", expanded=False):
-        st.info("💡 **유압기 사용 기준:** 1회 40~60통 대량 생산 (금요일 작업)")
-        c_batch, c_cycle = st.columns(2)
-        with c_batch:
-            batch_milk = st.slider("1회 우유 투입량 (통)", 16, 80, 40)
-        with c_cycle:
-            st.write("🔄 **월간 사이클 (4주)**")
-            st.write("- 1주: 일반 커드 (커드 시원한 것용)")
-            st.write("- 3주: 계란 커드 (환자 공급용)")
-        milk_kg_per_batch = batch_milk * 2.3
-        curd_yield_kg = milk_kg_per_batch * 0.22 
-        month_gen_curd = curd_yield_kg * 1
-        month_egg_curd_kg = curd_yield_kg * 3
-        month_egg_curd_cnt = int(month_egg_curd_kg * 1000 / 150)
-        gen_mix_cnt = int((month_gen_curd * 6.5) * 1000 / 260)
-        capacity_person = int(month_egg_curd_cnt / 30)
-        st.markdown("---")
-        c_res1, c_res2, c_res3 = st.columns(3)
-        with c_res1:
-            st.success("🧀 **월간 일반 커드 (1회)**")
-            st.metric("총 생산량", f"{month_gen_curd:.1f} kg")
-            st.caption(f"👉 커드 시원한 것 약 {gen_mix_cnt}병 생산 가능")
-        with c_res2:
-            st.warning("🥚 **월간 계란 커드 (3회)**")
-            st.metric("총 생산량", f"{month_egg_curd_cnt} 개")
-            st.caption(f"총 {month_egg_curd_kg:.1f} kg")
-        with c_res3:
-            st.error("👥 **수용 가능 인원**")
-            st.metric("월간 케어", f"{capacity_person} 명")
-            st.caption("1인 1일 1개 섭취 기준")
-
+# Tab 6~10 (기존 유지)
 with t6:
     st.header(f"🗓️ 연간 생산 캘린더 ({st.session_state.view_month}월)")
     sel_month = st.selectbox("월 선택", list(range(1, 13)), key="view_month")
