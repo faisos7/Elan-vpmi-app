@@ -6,6 +6,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import holidays
 import uuid
+import json
 
 # 1. 페이지 설정
 st.set_page_config(page_title="엘랑비탈 정기배송", page_icon="🏥", layout="wide")
@@ -26,7 +27,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.7.9.2")
+            st.title("🔒 엘랑비탈 ERP v.8.0")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -131,13 +132,18 @@ def save_ph_log(record):
         st.error(f"pH 기록 저장 실패: {e}")
         return False
 
-def update_production_status(batch_id, new_status):
+# [v.8.0] 상태 업데이트 함수 강화 (커드 공정 추적용)
+def update_production_status(batch_id, new_status, note_append=None):
     try:
         client = get_gspread_client()
         sheet = client.open("vpmi_data").worksheet("production")
         cell = sheet.find(batch_id)
         if cell:
-            sheet.update_cell(cell.row, 12, new_status)
+            sheet.update_cell(cell.row, 12, new_status) # 상태 업데이트
+            if note_append:
+                current_note = sheet.cell(cell.row, 11).value # 비고란
+                new_note = f"{current_note} | {note_append}" if current_note else note_append
+                sheet.update_cell(cell.row, 11, new_note)
             return True
         return False
     except Exception as e:
@@ -218,14 +224,6 @@ def init_session_state():
         r_db["계란커드 스타터 [혼합]"] = {"desc": "대사체 단순 혼합", "batch_size": 9, "materials": {"개망초 대사체": 8, "아카시아잎 대사체": 1}}
         r_db["계란커드 스타터 [합제]"] = {"desc": "원물 8:1 혼합 대사", "batch_size": 9, "materials": {"개망초꽃(원물)": 8, "아카시아잎(원물)": 1, "EX": 36}}
         r_db["철원산삼 대사체"] = {"desc": "1:8 비율", "batch_size": 9, "materials": {"철원산삼": 1, "EX": 8}}
-        
-        r_db["혼합 [E.R.P.V.P]"] = {"desc": "6배수 혼합/14병", "batch_size": 14, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 12, "송이대사체 (50ml)": 6, "장미꽃 대사체 (50ml)": 6, "Vitamin C (3000mg)": 14, "SiO2 (1ml)": 14, "EX": 900}}
-        r_db["혼합 [P.V.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 1, "Vitamin C (3000mg)": 1, "EX": 100}}
-        r_db["혼합 [P.P.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
-        r_db["혼합 [Ex.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 100}}
-        r_db["혼합 [R.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"장미꽃 대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "인삼사이다": 50}}
-        r_db["혼합 [Edf.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"개망초(EDF) (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "인삼사이다": 50}}
-        r_db["혼합 [P.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
         st.session_state.recipe_db = r_db
     
     if 'regimen_db' not in st.session_state:
@@ -240,7 +238,7 @@ def init_session_state():
 init_session_state()
 
 # 5. 메인 화면
-st.title("🏥 엘랑비탈 ERP v.7.9.2 (Hybrid)")
+st.title("🏥 엘랑비탈 ERP v.8.0 (Curd Lifecycle)")
 col1, col2 = st.columns(2)
 
 def calculate_round_v4(start_date_input, current_date_input, group_type):
@@ -322,7 +320,7 @@ with c2:
                 if st.checkbox(f"{k}{info}", v.get('default'), help=f"시작: {s_date_disp}"): sel_p[k] = {'items': v['items'], 'group': v['group'], 'round': r_num}
 
 st.divider()
-t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 = st.tabs(["🏷️ 라벨", "🎁 장연구원", "🧪 한책임", "📊 커드 수요량", f"🏭 생산 관리 ({week_str})", f"🗓️ 연간 일정 ({month_str})", "💊 임상/처방", "📂 발송 이력", "🏭 생산 이력", "🔬 대사/pH 관리"])
+t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 = st.tabs(["🏷️ 라벨", "🎁 장연구원", "🧪 한책임", "📊 커드 수요량", f"🧀 커드 생산 관리", f"🗓️ 연간 일정 ({month_str})", "💊 임상/처방", "📂 발송 이력", "🏭 기타 생산 이력", "🔬 대사/pH 관리"])
 
 # Tab 1~4 (기존 유지)
 with t1:
@@ -438,80 +436,111 @@ with t4:
     st.info(f"🧀 **총 필요 커드:** 약 {total_kg:.2f} kg")
     st.success(f"🥛 **필요 우유:** 약 {math.ceil(milk)}통")
 
-# [v.7.9.2] Tab 5: 생산 관리 (하이브리드 스타터 & 계란 계산)
+# [v.8.0] Tab 5: 커드 생산 관리 (대사, 분리, 포장)
 with t5:
-    st.header(f"🏭 생산 관리 ({week_str})")
+    st.header(f"🧀 커드 생산 관리 ({week_str})")
     
-    with st.expander("🥛 **커드 생산 시뮬레이터 (Capa Planning)**", expanded=True):
-        c_capa1, c_capa2 = st.columns(2)
-        with c_capa1:
-            batch_milk_vol = st.number_input("1회 생산 우유량 (통)", 1, 100, 30, help="현재 최대 30통")
-            prod_freq = st.slider("주간 생산 횟수 (Frequency)", 1, 7, 1, help="생산 횟수를 늘려 병목 해결")
-        with c_capa2:
-            target_product = st.radio("생산 목표 (Target)", ["계란 커드 (완제품)", "일반 커드 (중간재/시원한것용)"])
-
-        # 공통 계산
-        milk_kg_per_batch = batch_milk_vol * 2.3
+    # 1. 생산 시작 (Mixing)
+    with st.expander("🥛 **1단계: 배합 및 대사 시작 (Mixing)**", expanded=True):
+        c_mix1, c_mix2 = st.columns(2)
+        with c_mix1:
+            batch_milk_vol = st.number_input("우유 투입 (통)", 1, 100, 30)
+            target_product = st.radio("종류", ["계란 커드 (완제품)", "일반 커드 (중간재)"], horizontal=True)
         
-        if target_product == "계란 커드 (완제품)":
-            # 레시피: 우유:계란=4:1
-            egg_kg_per_batch = milk_kg_per_batch / 4
-            total_base_kg = milk_kg_per_batch + egg_kg_per_batch
-            
-            req_egg_cnt = int(egg_kg_per_batch / 0.045) # 대란 45g 기준
+        # 8L 유리병 계산 (2통 = 1병)
+        jars_count = batch_milk_vol // 2
+        milk_kg = batch_milk_vol * 2.3
+        
+        with c_mix2:
+            st.metric("🍾 예상 유리병 수", f"{jars_count} 병")
+            if target_product == "계란 커드 (완제품)":
+                egg_kg = milk_kg / 4
+                req_egg_cnt = int(egg_kg / 0.045)
+                st.write(f"- 계란(깐 것): **{egg_kg:.1f} kg** (약 {req_egg_cnt}알)")
+                
+                # 스타터 계산
+                st.markdown("**스타터 배합**")
+                c_s1, c_s2 = st.columns(2)
+                d_pct = c_s1.number_input("개망초/아카시아(%)", 0, 50, 20)
+                c_pct = c_s2.number_input("시원한/마시는것(%)", 0, 50, 5)
+                
+                total_base = milk_kg + egg_kg
+                s_d_kg = total_base * (d_pct/100)
+                s_c_kg = total_base * (c_pct/100)
+                st.caption(f"개망초: {s_d_kg:.1f}kg / 시원한: {s_c_kg:.1f}kg")
+                if s_c_kg > 0: st.warning(f"❄️ 냉동 시원한 것 사용 시 올리고당 {s_c_kg*28:.0f}g 추가 후 하루 대사")
 
-            st.markdown("👇 **스타터 비율 설정 (합계 25% 권장)**")
-            c_s1, c_s2 = st.columns(2)
-            daisy_pct = c_s1.number_input("개망초/아카시아 (%)", 0, 100, 20)
-            cool_pct = c_s2.number_input("시원한/마시는것 (%)", 0, 100, 5)
+        if st.button("🚀 대사 시작 (항온실 입고)"):
+            # 배치 상태 생성: JSON 형태의 문자열로 저장
+            # {"total": 15, "meta": 15, "sep": 0, "fail": 0, "done": 0}
+            status_json = json.dumps({"total": jars_count, "meta": jars_count, "sep": 0, "fail": 0, "done": 0})
+            batch_id = f"{datetime.now(KST).strftime('%y%m%d')}-{target_product}-{uuid.uuid4().hex[:4]}"
             
-            # 스타터 계산 (총 중량 기준)
-            starter_daisy_mix_kg = total_base_kg * (daisy_pct / 100)
-            starter_cool_kg = total_base_kg * (cool_pct / 100)
-            
-            req_daisy = starter_daisy_mix_kg * (8/9)
-            req_acacia = starter_daisy_mix_kg * (1/9)
-            
-            # 생산량 예측 (총 투입량의 25% 수율 가정)
-            total_input_kg = total_base_kg + starter_daisy_mix_kg + starter_cool_kg
-            est_yield_kg = total_input_kg * 0.25 
-            est_count = int(est_yield_kg * 1000 / 150)
-            
-            st.markdown("---")
-            c_r1, c_r2 = st.columns(2)
-            c_r1.info(f"📊 **1회 생산 예상:** 계란 커드 약 {est_count}개 ({est_yield_kg:.1f} kg)")
-            c_r2.success(f"🗓️ **주간 총 생산 ({prod_freq}회):** 계란 커드 약 {est_count * prod_freq}개")
-            
-            st.markdown("#### 🛒 준비물 (1회분)")
-            st.write(f"- 🥛 우유: **{milk_kg_per_batch:.1f} kg** ({batch_milk_vol}통)")
-            st.write(f"- 🥚 계란 (껍질제거): **{egg_kg_per_batch:.1f} kg** (약 {req_egg_cnt}알)")
-            
-            st.markdown("#### 🧪 스타터 상세")
-            st.caption(f"1. 개망초/아카시아 ({daisy_pct}%): **{starter_daisy_mix_kg:.1f} kg**")
-            st.caption(f"   └ 개망초(8): {req_daisy:.2f} kg / 아카시아(1): {req_acacia:.2f} kg")
-            st.caption(f"2. 시원한/마시는것 ({cool_pct}%): **{starter_cool_kg:.1f} kg**")
-            if starter_cool_kg > 0:
-                st.warning(f"❄️ 냉동 시원한것 사용 시: 올리고당 **{starter_cool_kg * 0.028 * 1000:.0f}g** (2.8%) 추가 후 하루 상온 대사")
-            
-            st.error("⚠️ **계란 커드 공정 주의사항 (CCP)**")
-            st.write("- **신속 파각:** 온도 상승 방지")
-            st.write("- **이물질 관리:** 껍질 혼입 절대 금지 (필터링 철저)")
+            # DB 저장
+            rec = [batch_id, datetime.now(KST).strftime("%Y-%m-%d"), target_product, "우유+스타터", f"{milk_kg:.1f}", "-", "-", "-", "-", "-", "커드생산", status_json]
+            if save_production_record(rec):
+                st.success(f"[{batch_id}] 대사 시작! 유리병 {jars_count}개 입고됨.")
+                st.rerun()
 
-        else: # 일반 커드
-            starter_ratio = st.slider("스타터 비율 (%)", 10, 20, 15)
-            starter_kg = milk_kg_per_batch * (starter_ratio / 100)
-            
-            est_yield_kg = milk_kg_per_batch * 0.22 
-            
-            st.markdown("---")
-            c_r1, c_r2 = st.columns(2)
-            c_r1.info(f"📊 **1회 생산 예상:** 일반 커드 약 {est_yield_kg:.1f} kg")
-            c_r2.success(f"🗓️ **주간 총 생산 ({prod_freq}회):** 일반 커드 약 {est_yield_kg * prod_freq:.1f} kg")
-            
-            st.write(f"**필요 스타터 양:** {starter_kg:.2f} kg")
+    st.divider()
 
-    st.markdown("---")
-    st.caption("※ 상세 시뮬레이션은 위 '커드 생산 시뮬레이터'를 이용하세요.")
+    # 2. 대사 관리 및 분리 (Process Control)
+    st.subheader("🌡️ 2단계: 대사 관리 및 분리 (Metabolism & Separation)")
+    if st.button("🔄 상태 새로고침"): st.rerun()
+    
+    prod_df = load_sheet_data("production")
+    if not prod_df.empty:
+        # 커드 관련 배치만 필터링 (상태에 JSON이 있는 것들)
+        curd_df = prod_df[prod_df['종류'].str.contains("커드", na=False)]
+        
+        for idx, row in curd_df.iterrows():
+            try:
+                # 상태 JSON 파싱
+                status = json.loads(row['상태'])
+                if status.get('done') >= status.get('total'): continue # 완료된 건 스킵
+            except: continue # JSON 아니면 스킵
+            
+            with st.container(border=True):
+                c_info, c_action = st.columns([2, 3])
+                with c_info:
+                    st.markdown(f"**[{row['배치ID']}] {row['종류']}** ({row['생산일']})")
+                    st.progress(1 - (status['meta'] / status['total']), text=f"진행률 (잔여 대사중: {status['meta']}병)")
+                    st.write(f"🍾 총 {status['total']}병 | 🔥 대사중 {status['meta']} | 💧 분리중 {status['sep']} | 🗑️ 폐기 {status['fail']}")
+                
+                with c_action:
+                    c_act1, c_act2 = st.columns(2)
+                    # 대사 -> 분리 이동
+                    if status['meta'] > 0:
+                        move_sep = c_act1.number_input(f"분리실 이동 (병)", 0, status['meta'], 0, key=f"sep_{row['배치ID']}")
+                        if c_act1.button("💧 분리 시작", key=f"btn_sep_{row['배치ID']}"):
+                            status['meta'] -= move_sep
+                            status['sep'] += move_sep
+                            update_production_status(row['배치ID'], json.dumps(status))
+                            st.rerun()
+                            
+                        # 대사 실패 (폐기)
+                        fail_cnt = c_act2.number_input(f"망침/폐기 (병)", 0, status['meta'], 0, key=f"fail_{row['배치ID']}")
+                        if c_act2.button("🗑️ 폐기 처리", key=f"btn_fail_{row['배치ID']}"):
+                            status['meta'] -= fail_cnt
+                            status['fail'] += fail_cnt
+                            update_production_status(row['배치ID'], json.dumps(status))
+                            st.rerun()
+                    
+                    # 분리 -> 포장 완료
+                    if status['sep'] > 0:
+                        st.markdown("---")
+                        c_pack1, c_pack2 = st.columns(2)
+                        pack_cnt = c_pack1.number_input(f"포장 완료 (병)", 0, status['sep'], 0, key=f"pack_{row['배치ID']}")
+                        final_prod_cnt = c_pack2.number_input("생산된 소포장(150g) 개수", 0, 1000, 0, key=f"final_{row['배치ID']}")
+                        
+                        if st.button("🎁 포장 및 완료", key=f"btn_pack_{row['배치ID']}"):
+                            status['sep'] -= pack_cnt
+                            status['done'] += pack_cnt
+                            # 완료 기록을 비고에 추가
+                            note = f"완료({datetime.now(KST).strftime('%m/%d')}):{final_prod_cnt}개"
+                            update_production_status(row['배치ID'], json.dumps(status), note)
+                            st.success(f"{final_prod_cnt}개 생산 완료!")
+                            st.rerun()
 
 # Tab 6~10 (기존 유지)
 with t6:
@@ -602,13 +631,13 @@ with t8:
         st.download_button("📥 다운로드", csv, f"history_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
 
 with t9:
-    st.header("🏭 생산 이력")
+    st.header("🏭 기타 생산 이력")
     with st.container(border=True):
-        st.subheader("📝 생산 기록 입력 & 배합 시뮬레이션")
+        st.subheader("📝 생산 기록 입력")
         
         c1, c2, c3 = st.columns(3)
         p_date = c1.date_input("생산일", datetime.now(KST))
-        p_type = c2.selectbox("종류", ["저염김치(0.3%)", "무염김치(0%)", "일반 식물 대사체", "커드(일반)", "계란 커드", "철원산삼", "기타"])
+        p_type = c2.selectbox("종류", ["일반 식물 대사체", "무염김치", "철원산삼", "기타"])
         
         rm_list = st.session_state.raw_material_list + ["(직접 입력)"]
         p_name_sel = c3.selectbox("원재료명", rm_list)
@@ -618,46 +647,19 @@ with t9:
             p_name = p_name_sel
         
         c4, c5, c6 = st.columns(3)
-        p_weight = c4.number_input("원재료 무게 (kg)", 0.0, 1000.0, 100.0 if "김치" in p_type else 1.0, step=0.1)
-        p_ratio = c5.selectbox("배합 비율", ["저염김치(배추10:속6)", "1:4", "1:6", "1:8", "1:10", "1:12", "기타"])
+        p_weight = c4.number_input("원재료 무게 (kg)", 0.0, 1000.0, 1.0, step=0.1)
+        p_ratio = c5.selectbox("배합 비율", ["1:4", "1:6", "1:8", "1:10", "1:12", "기타"])
         p_note = c6.text_input("비고 (특이사항, pH 등)")
 
-        if p_type == "저염김치(0.3%)":
-            st.info(f"🥬 **저염김치 배합 시뮬레이션 (배추 {p_weight}kg 기준)**")
-            ratio = p_weight / 100 
-            rc1, rc2, rc3 = st.columns(3)
-            with rc1:
-                st.markdown("**1. 육수 & 죽**")
-                st.write(f"- 물: {20*ratio:.1f}kg")
-                st.write(f"- 찹쌀죽: {16*ratio:.1f}kg (가루 {1.5*ratio:.2f}kg)")
-                st.write(f"- 육수재료: 무, 양파, 배, 대파, 멸치 등")
-            with rc2:
-                st.markdown("**2. 김치소 양념**")
-                st.write(f"- 마늘: {4*ratio:.1f}kg, 생강: {0.7*ratio:.2f}kg")
-                st.write(f"- 고춧가루: {9*ratio:.1f}kg (고운1+굵은8)")
-                st.write(f"- 젓갈: 새우젓 {1.5*ratio:.1f}kg, 액젓 {2.5*ratio:.1f}kg")
-            with rc3:
-                st.markdown("**3. 핵심 소재**")
-                st.write(f"- **조성액(VPMI-CM): {7.6*ratio:.2f}kg**")
-                st.write(f"- 원당: {2.2*ratio:.1f}kg")
-                st.write(f"- 이소말토/프락토: 각 {0.8*ratio:.1f}kg")
-                st.success(f"👉 **총 김치소 예상: {60*ratio:.1f}kg**")
-        else:
-            try: r_val = int(p_ratio.split(':')[1])
-            except: r_val = 4
-            total = p_weight * r_val
-            st.caption(f"🧪 일반 대사체 배합: 물 {total/106.3*100:.1f}kg, EX {total/106.3*3.5:.1f}kg, 당 {total/106.3*2.8:.1f}kg")
+        try: r_val = int(p_ratio.split(':')[1])
+        except: r_val = 4
+        total = p_weight * r_val
+        st.caption(f"🧪 일반 대사체 배합: 물 {total/106.3*100:.1f}kg, EX {total/106.3*3.5:.1f}kg, 당 {total/106.3*2.8:.1f}kg")
 
         if st.button("💾 생산 기록 저장"):
             batch_id = f"{p_date.strftime('%y%m%d')}-{p_name}-{uuid.uuid4().hex[:4]}"
-            if "김치" in p_type:
-                 rec = [batch_id, p_date.strftime("%Y-%m-%d"), p_type, p_name, p_weight, p_ratio, "-", "-", "-", "-", p_note, "진행중"]
-            else:
-                try: r_val = int(p_ratio.split(':')[1])
-                except: r_val = 4
-                total = p_weight * r_val
-                rec = [batch_id, p_date.strftime("%Y-%m-%d"), p_type, p_name, p_weight, p_ratio, f"{total:.1f}", 
-                       f"{total/106.3*100:.1f}", f"{total/106.3*3.5:.1f}", f"{total/106.3*2.8:.1f}", p_note, "진행중"]
+            rec = [batch_id, p_date.strftime("%Y-%m-%d"), p_type, p_name, p_weight, p_ratio, f"{total:.1f}", 
+                   f"{total/106.3*100:.1f}", f"{total/106.3*3.5:.1f}", f"{total/106.3*2.8:.1f}", p_note, "진행중"]
 
             if save_production_record(rec): st.success(f"[{batch_id}] 생산 등록 완료!")
 
@@ -679,7 +681,8 @@ with t10:
         batch_options = ["(직접입력)"]
         if not prod_df.empty:
             ongoing = prod_df[prod_df['상태'] == '진행중']
-            batch_options += ongoing.apply(lambda x: f"{x['배치ID']} ({x['원재료']})", axis=1).tolist()
+            if not ongoing.empty:
+                batch_options += ongoing.apply(lambda x: f"{x['배치ID']} ({x['원재료']})", axis=1).tolist()
             
         c3, c4 = st.columns(2)
         sel_batch = c3.selectbox("배치 선택", batch_options)
