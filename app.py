@@ -26,7 +26,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.7.5 (Restore)")
+            st.title("🔒 엘랑비탈 ERP v.7.6")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -50,7 +50,6 @@ def load_data_from_sheet():
         sheet = client.open("vpmi_data").sheet1
         data = sheet.get_all_records()
         
-        # 기본 용량 사전 (표준 용량이 정해진 것들)
         default_caps = {
             "시원한 것": "280ml", "마시는 것": "280ml", "커드 시원한 것": "280ml",
             "인삼 사이다": "300ml", "EX": "280ml",
@@ -74,14 +73,8 @@ def load_data_from_sheet():
                     
                     if clean_name == "PAGI 희석액": clean_name = "인삼대사체(PAGI) 항암용"
                     
-                    # 용량 매칭: 없으면 빈칸("")으로 둠 (더이상 '표준' 안씀)
                     cap = default_caps.get(clean_name, "")
-                    
-                    items_list.append({
-                        "제품": clean_name, 
-                        "수량": int(p_qty.strip()),
-                        "용량": cap 
-                    })
+                    items_list.append({"제품": clean_name, "수량": int(p_qty.strip()), "용량": cap})
             
             round_val = row.get('회차')
             if round_val is None or str(round_val).strip() == "": 
@@ -104,7 +97,7 @@ def load_data_from_sheet():
             }
         return db
     except Exception as e:
-        return {} # 에러 시 빈 DB 반환 (멈춤 방지)
+        return {}
 
 def save_to_history(record_list):
     try:
@@ -151,7 +144,6 @@ def update_production_status(batch_id, new_status):
         sheet = client.open("vpmi_data").worksheet("production")
         cell = sheet.find(batch_id)
         if cell:
-            # 상태 컬럼(L열, 12번째) 업데이트
             sheet.update_cell(cell.row, 12, new_status)
             return True
         return False
@@ -236,7 +228,7 @@ def init_session_state():
 init_session_state()
 
 # 5. 메인 화면
-st.title("🏥 엘랑비탈 ERP v.7.5 (Full)")
+st.title("🏥 엘랑비탈 ERP v.7.6 (Simple Record)")
 col1, col2 = st.columns(2)
 
 def calculate_round_v4(start_date_input, current_date_input, group_type):
@@ -255,8 +247,21 @@ def on_date_change():
     if 'target_date' in st.session_state:
         st.session_state.view_month = st.session_state.target_date.month
 
+kr_holidays = holidays.KR()
+def check_delivery_date(date_obj):
+    weekday = date_obj.weekday()
+    if weekday == 4: return False, "⛔ **금요일 발송 금지**"
+    if weekday >= 5: return False, "⛔ **주말 발송 불가**"
+    if date_obj in kr_holidays: return False, f"⛔ **휴일({kr_holidays.get(date_obj)})**"
+    next_day = date_obj + timedelta(days=1)
+    if next_day in kr_holidays: return False, f"⛔ **익일 휴일**"
+    return True, "✅ **발송 가능**"
+
 with col1: 
     target_date = st.date_input("발송일", value=datetime.now(KST), key="target_date", on_change=on_date_change)
+    is_ok, msg = check_delivery_date(target_date)
+    if is_ok: st.success(msg)
+    else: st.error(msg)
 
 def get_week_info(date_obj):
     month = date_obj.month
@@ -266,9 +271,16 @@ def get_week_info(date_obj):
 week_str = get_week_info(target_date)
 month_str = f"{target_date.month}월"
 
+with col2:
+    st.info(f"📅 **{target_date.year}년 {target_date.month}월 휴무일**")
+    month_holidays = [f"• {d.day}일: {n}" for d, n in kr_holidays.items() if d.year == target_date.year and d.month == target_date.month]
+    if month_holidays:
+        for h in month_holidays: st.write(h)
+    else: st.write("• 휴일 없음")
+
 st.divider()
 
-if st.button("🔄 데이터 새로고침 (구글 시트)"):
+if st.button("🔄 데이터 새로고침"):
     st.cache_data.clear()
     st.session_state.patient_db = load_data_from_sheet()
     st.success("갱신 완료!")
@@ -333,7 +345,7 @@ with t1:
                     st.markdown("---")
                     st.write("🏥 **엘랑비탈바이오**")
 
-# Tab 2: 장연구원
+# Tab 2~7 (기존 유지)
 with t2:
     st.header("🎁 장연구원 (개별 포장)")
     tot = {}
@@ -346,7 +358,6 @@ with t2:
     df = pd.DataFrame(list(tot.items()), columns=["제품", "수량"]).sort_values("수량", ascending=False)
     st.dataframe(df, use_container_width=True)
 
-# Tab 3: 한책임
 with t3:
     st.header("🧪 한책임 (혼합 제조)")
     req = {}
@@ -392,7 +403,6 @@ with t3:
         else:
             st.success(f"📦 **{k}**: {v:g} 개")
 
-# Tab 4: 커드 수요량
 with t4:
     st.header("📊 커드 수요량")
     curd_pure = 0
@@ -413,7 +423,6 @@ with t4:
     st.info(f"🧀 **총 필요 커드:** 약 {total_kg:.2f} kg")
     st.success(f"🥛 **필요 우유:** 약 {math.ceil(milk)}통")
 
-# Tab 5: 생산 관리
 with t5:
     st.header(f"🏭 생산 관리 ({week_str})")
     st.markdown("---")
@@ -626,40 +635,21 @@ with t9:
         p_ratio = c5.selectbox("배합 비율", ["저염김치(배추10:속6)", "1:4", "1:6", "1:8", "1:10", "1:12", "기타"])
         p_note = c6.text_input("비고 (특이사항, pH 등)")
 
-        # 저염김치 상세 계산기
-        if p_type == "저염김치(0.3%)":
-            st.info(f"🥬 **저염김치 배합 시뮬레이션 (배추 {p_weight}kg 기준)**")
-            # 배추 100kg 기준 비율 적용
-            ratio = p_weight / 100 
-            
-            rc1, rc2, rc3 = st.columns(3)
-            with rc1:
-                st.markdown("**1. 육수 & 죽**")
-                st.write(f"- 물: {20*ratio:.1f}kg")
-                st.write(f"- 찹쌀죽: {16*ratio:.1f}kg (가루 {1.5*ratio:.2f}kg)")
-                st.write(f"- 육수재료: 무, 양파, 배, 대파, 멸치 등")
-            with rc2:
-                st.markdown("**2. 김치소 양념**")
-                st.write(f"- 마늘: {4*ratio:.1f}kg, 생강: {0.7*ratio:.2f}kg")
-                st.write(f"- 고춧가루: {9*ratio:.1f}kg (고운1+굵은8)")
-                st.write(f"- 젓갈: 새우젓 {1.5*ratio:.1f}kg, 액젓 {2.5*ratio:.1f}kg")
-            with rc3:
-                st.markdown("**3. 핵심 소재**")
-                st.write(f"- **조성액(VPMI-CM): {7.6*ratio:.2f}kg**")
-                st.write(f"- 원당: {2.2*ratio:.1f}kg")
-                st.write(f"- 이소말토/프락토: 각 {0.8*ratio:.1f}kg")
-                st.success(f"👉 **총 김치소 예상: {60*ratio:.1f}kg**")
-
-        # 일반 대사체 자동 계산기
-        else:
-            try: r_val = int(p_ratio.split(':')[1])
-            except: r_val = 4
-            total = p_weight * r_val
-            st.caption(f"🧪 일반 대사체 배합: 물 {total/106.3*100:.1f}kg, EX {total/106.3*3.5:.1f}kg, 당 {total/106.3*2.8:.1f}kg")
-
+        # [v.7.6] 단순화된 생산 기록 (레시피 계산 제거)
         if st.button("💾 생산 기록 저장"):
             batch_id = f"{p_date.strftime('%y%m%d')}-{p_name}-{uuid.uuid4().hex[:4]}"
-            rec = [batch_id, p_date.strftime("%Y-%m-%d"), p_type, p_name, p_weight, p_ratio, "", "", "", "", p_note, "진행중"]
+            
+            # 김치류는 상세 계산 없이 저장, 일반 대사체는 기존 방식 유지 또는 단순화
+            if "김치" in p_type:
+                 rec = [batch_id, p_date.strftime("%Y-%m-%d"), p_type, p_name, p_weight, p_ratio, "-", "-", "-", "-", p_note, "진행중"]
+            else:
+                # 일반 대사체 계산 (필요시 유지)
+                try: r_val = int(p_ratio.split(':')[1])
+                except: r_val = 4
+                total = p_weight * r_val
+                rec = [batch_id, p_date.strftime("%Y-%m-%d"), p_type, p_name, p_weight, p_ratio, f"{total:.1f}", 
+                       f"{total/106.3*100:.1f}", f"{total/106.3*3.5:.1f}", f"{total/106.3*2.8:.1f}", p_note, "진행중"]
+
             if save_production_record(rec): st.success(f"[{batch_id}] 생산 등록 완료!")
 
     st.divider()
