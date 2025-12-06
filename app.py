@@ -26,7 +26,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.7.8.1")
+            st.title("🔒 엘랑비탈 ERP v.7.9")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -50,7 +50,7 @@ def load_data_from_sheet():
         sheet = client.open("vpmi_data").sheet1
         data = sheet.get_all_records()
         
-        # [v.7.8.1] 제품 목록 정리 (커드 삭제, 계란 커드/커드 시원한 것 유지)
+        # 기본 용량 사전
         default_caps = {
             "시원한 것": "280ml", "마시는 것": "280ml", "커드 시원한 것": "280ml",
             "인삼 사이다": "300ml", "EX": "280ml",
@@ -72,16 +72,21 @@ def load_data_from_sheet():
                     p_name, p_qty = item.split(':')
                     clean_name = p_name.strip()
                     
+                    # [v.7.9 명칭 자동 통합 로직]
                     if clean_name == "PAGI 희석액": clean_name = "인삼대사체(PAGI) 항암용"
+                    if clean_name == "커드": clean_name = "계란 커드"  # '커드'라고 쓰면 '계란 커드'로 통합
                     
                     cap = default_caps.get(clean_name, "")
                     items_list.append({"제품": clean_name, "수량": int(p_qty.strip()), "용량": cap})
             
             round_val = row.get('회차')
-            if round_val is None or str(round_val).strip() == "": round_num = 1 
+            if round_val is None or str(round_val).strip() == "": 
+                round_num = 1 
             else:
-                try: round_num = int(str(round_val).replace('회', '').replace('주', '').strip())
-                except: round_num = 1
+                try: 
+                    round_num = int(str(round_val).replace('회', '').replace('주', '').strip())
+                except: 
+                    round_num = 1
 
             start_date_str = str(row.get('시작일', '')).strip()
 
@@ -167,8 +172,8 @@ def init_session_state():
 
     if 'schedule_db' not in st.session_state:
         st.session_state.schedule_db = {
-            1: {"title": "1월 (JAN)", "main": ["동백꽃 (대사/필터링)", "인삼사이다 (병입)", "유기농 우유 커드"], "note": "동백꽃 pH 3.8~4.0 도달 시 종료"},
-            2: {"title": "2월 (FEB)", "main": ["갈대뿌리 (채취/건조/대사)", "당근 (대사)"], "note": "갈대뿌리 세척 후 건조 수율 약 37%"},
+            1: {"title": "1월 (JAN)", "main": ["동백꽃", "인삼사이다", "유기농 우유 커드"], "note": "동백꽃 pH 3.8~4.0 도달 시 종료"},
+            2: {"title": "2월 (FEB)", "main": ["갈대뿌리", "당근"], "note": "갈대뿌리 수율 약 37%"},
             3: {"title": "3월 (MAR)", "main": ["봄꽃 대사", "표고버섯"], "note": "꽃:줄기 1:1"},
             4: {"title": "4월 (APR)", "main": ["애기똥풀", "등나무꽃"], "note": "애기똥풀 전초"},
             5: {"title": "5월 (MAY)", "main": ["개망초+아카시아 합제", "아카시아꽃", "뽕잎"], "note": "계란커드 스타터용"},
@@ -184,7 +189,6 @@ def init_session_state():
     if 'yearly_memos' not in st.session_state:
         st.session_state.yearly_memos = []
 
-    # [v.7.8.1] 원재료 목록 (김치 재료 완벽 포함 + 우선순위 정렬)
     if 'raw_material_list' not in st.session_state:
         priority_list = [
             "우유", "계란", "배추", "무", "마늘", "대파", "양파", "생강", "배", 
@@ -245,7 +249,7 @@ def init_session_state():
 init_session_state()
 
 # 5. 메인 화면
-st.title("🏥 엘랑비탈 ERP v.7.8.1 (Ingredients)")
+st.title("🏥 엘랑비탈 ERP v.7.9 (Consolidated)")
 col1, col2 = st.columns(2)
 
 def calculate_round_v4(start_date_input, current_date_input, group_type):
@@ -264,21 +268,8 @@ def on_date_change():
     if 'target_date' in st.session_state:
         st.session_state.view_month = st.session_state.target_date.month
 
-kr_holidays = holidays.KR()
-def check_delivery_date(date_obj):
-    weekday = date_obj.weekday()
-    if weekday == 4: return False, "⛔ **금요일 발송 금지**"
-    if weekday >= 5: return False, "⛔ **주말 발송 불가**"
-    if date_obj in kr_holidays: return False, f"⛔ **휴일({kr_holidays.get(date_obj)})**"
-    next_day = date_obj + timedelta(days=1)
-    if next_day in kr_holidays: return False, f"⛔ **익일 휴일**"
-    return True, "✅ **발송 가능**"
-
 with col1: 
     target_date = st.date_input("발송일", value=datetime.now(KST), key="target_date", on_change=on_date_change)
-    is_ok, msg = check_delivery_date(target_date)
-    if is_ok: st.success(msg)
-    else: st.error(msg)
 
 def get_week_info(date_obj):
     month = date_obj.month
@@ -287,13 +278,6 @@ def get_week_info(date_obj):
 
 week_str = get_week_info(target_date)
 month_str = f"{target_date.month}월"
-
-with col2:
-    st.info(f"📅 **{target_date.year}년 {target_date.month}월 휴무일**")
-    month_holidays = [f"• {d.day}일: {n}" for d, n in kr_holidays.items() if d.year == target_date.year and d.month == target_date.month]
-    if month_holidays:
-        for h in month_holidays: st.write(h)
-    else: st.write("• 휴일 없음")
 
 st.divider()
 
@@ -329,7 +313,7 @@ with c2:
 st.divider()
 t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 = st.tabs(["🏷️ 라벨", "🎁 장연구원", "🧪 한책임", "📊 커드 수요량", f"🏭 생산 관리 ({week_str})", f"🗓️ 연간 일정 ({month_str})", "💊 임상/처방", "📂 발송 이력", "🏭 생산 이력", "🔬 대사/pH 관리"])
 
-# Tab 1~8 (기존 유지)
+# Tab 1: 라벨
 with t1:
     c_head, c_btn = st.columns([2, 1])
     with c_head: st.header("🖨️ 라벨 출력")
@@ -426,18 +410,15 @@ with t4:
     for data_info in sel_p.values():
         items = data_info['items']
         for x in items:
-            if x['제품'] == "계란 커드": curd_pure += x['수량'] # 계란 커드는 150g
-            elif x['제품'] == "커드 시원한 것": curd_cool += x['수량']
+            # [v.7.9] '커드' or '계란 커드' 통합 집계
+            if x['제품'] == "계란 커드" or x['제품'] == "커드": 
+                curd_pure += x['수량']
+            elif x['제품'] == "커드 시원한 것": 
+                curd_cool += x['수량']
     
-    # [v.7.8.1] 커드 계산 로직 정리
-    # 커드 시원한 것 (280ml) -> 40g 커드 소모
-    # 계란 커드 (150g) -> 150g 커드 소모 (제품 자체가 커드)
     need_from_cool = curd_cool * 40
     need_from_pure = curd_pure * 150
     total_kg = (need_from_cool + need_from_pure) / 1000
-    
-    # 우유 필요량 (수율 22% 가정 시 4.5배, 보수적으로 5.5배? -> 기존 로직 9kg당 16통 역산)
-    # 기존: (total_kg / 9) * 16  (약 1.77배? 아님. 9kg 만드는데 16통(36.8kg) -> 수율 24.4%)
     milk = (total_kg / 9) * 16
     
     c1, c2 = st.columns(2)
@@ -447,6 +428,7 @@ with t4:
     st.info(f"🧀 **총 필요 커드:** 약 {total_kg:.2f} kg")
     st.success(f"🥛 **필요 우유:** 약 {math.ceil(milk)}통")
 
+# Tab 5~10 (기존 로직 유지)
 with t5:
     st.header(f"🏭 생산 관리 ({week_str})")
     st.markdown("---")
@@ -562,7 +544,6 @@ with t5:
             st.metric("월간 케어", f"{capacity_person} 명")
             st.caption("1인 1일 1개 섭취 기준")
 
-# Tab 6~10 (기존 유지)
 with t6:
     st.header(f"🗓️ 연간 생산 캘린더 ({st.session_state.view_month}월)")
     sel_month = st.selectbox("월 선택", list(range(1, 13)), key="view_month")
@@ -650,7 +631,6 @@ with t8:
         csv = hist_df.to_csv(index=False).encode('utf-8-sig')
         st.download_button("📥 다운로드", csv, f"history_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
 
-# [v.7.8.1] Tab 9: 생산 이력 (원재료 선택 기능 추가)
 with t9:
     st.header("🏭 생산 이력")
     with st.container(border=True):
@@ -660,7 +640,6 @@ with t9:
         p_date = c1.date_input("생산일", datetime.now(KST))
         p_type = c2.selectbox("종류", ["저염김치(0.3%)", "무염김치(0%)", "일반 식물 대사체", "커드(일반)", "계란 커드", "철원산삼", "기타"])
         
-        # 원재료 선택 (리스트 + 직접입력)
         rm_list = st.session_state.raw_material_list + ["(직접 입력)"]
         p_name_sel = c3.selectbox("원재료명", rm_list)
         if p_name_sel == "(직접 입력)":
