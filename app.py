@@ -27,7 +27,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.0.8.8")
+            st.title("🔒 엘랑비탈 ERP v.0.8.9")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -250,7 +250,7 @@ init_session_state()
 st.sidebar.title("📌 메뉴 선택")
 app_mode = st.sidebar.radio("작업 모드를 선택하세요", ["🚛 배송/주문 관리", "🏭 생산/공정 관리"])
 
-st.title(f"🏥 엘랑비탈 ERP v.0.8.8 ({app_mode})")
+st.title(f"🏥 엘랑비탈 ERP v.0.8.9 ({app_mode})")
 
 def calculate_round_v4(start_date_input, current_date_input, group_type):
     try:
@@ -416,7 +416,6 @@ if app_mode == "🚛 배송/주문 관리":
             st.divider()
             st.subheader("∑ 원료 총 필요량")
             for k, v in sorted(total_mat.items(), key=lambda x: x[1], reverse=True):
-                # [v.0.8.7] 용량 표기 강화
                 if "PAGI" in k or "인삼대사체" in k or "송이" in k or "장미" in k or "개망초" in k or "EDF" in k:
                     vol_ml = v * 50
                     st.info(f"💧 **{k}**: {v:.1f}개 (총 {vol_ml:,.0f} ml)")
@@ -466,7 +465,7 @@ elif app_mode == "🏭 생산/공정 관리":
         
         # 1. 생산 시작 (Mixing)
         with st.expander("🥛 **1단계: 배합 및 대사 시작 (Mixing)**", expanded=True):
-            # [v.0.8.8] 우유 투입 단위 선택 추가
+            # [v.0.8.9] 우유 투입 단위 선택 (통 vs kg)
             st.markdown("##### 🥛 우유 투입량 설정")
             c_u1, c_u2 = st.columns(2)
             with c_u1:
@@ -480,8 +479,9 @@ elif app_mode == "🏭 생산/공정 관리":
             else:
                 with c_u1:
                     milk_kg = st.number_input("우유 무게 (kg)", 1.0, 500.0, 69.0, step=0.1)
-                # 1 Jar = 2 Bottles (4.6kg) estimation
-                jars_count = int(milk_kg / 4.6)
+                # [v.0.8.9] kg 입력 시 용기 갯수 직접 입력 (비규격 용기 대응)
+                with c_u2:
+                    jars_count = st.number_input("사용 용기 수 (개)", 1, 100, 1, help="비규격 용기일 경우 실제 사용한 용기 갯수를 입력하세요.")
 
             st.markdown("---")
             c_mix1, c_mix2 = st.columns(2)
@@ -489,7 +489,7 @@ elif app_mode == "🏭 생산/공정 관리":
                 target_product = st.radio("종류", ["계란 커드 (완제품)", "일반 커드 (중간재)"], horizontal=True)
             
             with c_mix2:
-                st.metric("🫙 예상 유리용기 (8L)", f"{jars_count} 개")
+                st.metric("🫙 작업 용기 수", f"{jars_count} 개")
                 
                 if target_product == "계란 커드 (완제품)":
                     egg_kg = milk_kg / 4
@@ -590,7 +590,7 @@ elif app_mode == "🏭 생산/공정 관리":
                                     st.success("상태가 업데이트되고 생산량이 누적되었습니다!")
                                     st.rerun()
 
-    # Tab 6~10 (기존 유지)
+    # Tab 6~8 (기존 유지)
     with t6:
         st.header(f"🗓️ 연간 생산 캘린더")
         sel_month = st.selectbox("월 선택", list(range(1, 13)), index=datetime.now(KST).month-1)
@@ -659,7 +659,7 @@ elif app_mode == "🏭 생산/공정 관리":
             p_name = c3.text_input("직접 입력") if p_name_sel == "(직접 입력)" else p_name_sel
             
             c4, c5, c6 = st.columns(3)
-            p_weight = c4.number_input("원재료 무게 (kg)", 0.0, 1000.0, 1.0, step=0.1)
+            p_weight = c4.number_input("원재료 무게 (kg)", 0.0, 1000.0, 100.0 if "김치" in p_type else 1.0, step=0.1)
             p_ratio = c5.selectbox("배합 비율", ["저염김치(배추10:속6)", "1:4", "1:6", "1:8", "1:10", "1:12", "기타"])
             p_note = c6.text_input("비고 (특이사항, pH 등)")
 
