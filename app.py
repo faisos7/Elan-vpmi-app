@@ -27,7 +27,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.8.8")
+            st.title("🔒 엘랑비탈 ERP v.0.8.8")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -228,20 +228,11 @@ def init_session_state():
         ]
         st.session_state.product_list = plist
 
-    # [v.8.8] 레시피 DB 복구 및 강화
     if 'recipe_db' not in st.session_state:
         r_db = {}
         r_db["계란커드 스타터 [혼합]"] = {"desc": "대사체 단순 혼합", "batch_size": 9, "materials": {"개망초 대사체": 8, "아카시아잎 대사체": 1}}
         r_db["계란커드 스타터 [합제]"] = {"desc": "원물 8:1 혼합 대사", "batch_size": 9, "materials": {"개망초꽃(원물)": 8, "아카시아잎(원물)": 1, "EX": 36}}
         r_db["철원산삼 대사체"] = {"desc": "1:8 비율", "batch_size": 9, "materials": {"철원산삼": 1, "EX": 8}}
-        
-        r_db["혼합 [E.R.P.V.P]"] = {"desc": "6배수 혼합/14병", "batch_size": 14, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 12, "송이대사체 (50ml)": 6, "장미꽃 대사체 (50ml)": 6, "Vitamin C (3000mg)": 14, "SiO2 (1ml)": 14, "EX": 900}}
-        r_db["혼합 [P.V.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 1, "Vitamin C (3000mg)": 1, "EX": 100}}
-        r_db["혼합 [P.P.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
-        r_db["혼합 [Ex.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 100}}
-        r_db["혼합 [R.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"장미꽃 대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "인삼사이다": 50}}
-        r_db["혼합 [Edf.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"개망초(EDF) (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "인삼사이다": 50}}
-        r_db["혼합 [P.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
         st.session_state.recipe_db = r_db
     
     if 'regimen_db' not in st.session_state:
@@ -259,7 +250,7 @@ init_session_state()
 st.sidebar.title("📌 메뉴 선택")
 app_mode = st.sidebar.radio("작업 모드를 선택하세요", ["🚛 배송/주문 관리", "🏭 생산/공정 관리"])
 
-st.title(f"🏥 엘랑비탈 ERP v.8.8 ({app_mode})")
+st.title(f"🏥 엘랑비탈 ERP v.0.8.8 ({app_mode})")
 
 def calculate_round_v4(start_date_input, current_date_input, group_type):
     try:
@@ -385,16 +376,14 @@ if app_mode == "🚛 배송/주문 관리":
         df = pd.DataFrame(list(tot.items()), columns=["제품", "수량"]).sort_values("수량", ascending=False)
         st.dataframe(df, use_container_width=True)
 
-    # Tab 3: 한책임 (혼합 제조 - 로직 복구)
+    # Tab 3: 한책임
     with t3:
         st.header("🧪 혼합 제조 (Batch Mixing)")
         req = {}
-        # [v.8.8] Fix: sel_p 값의 구조가 {'items':..., 'group':...} 이므로 정확히 파싱해야 함
         for data_info in sel_p.values():
             items = data_info['items']
             for x in items:
-                if "혼합" in str(x['제품']): 
-                    req[x['제품']] = req.get(x['제품'], 0) + x['수량']
+                if "혼합" in str(x['제품']): req[x['제품']] = req.get(x['제품'], 0) + x['수량']
         
         recipes = st.session_state.recipe_db
         total_mat = {}
@@ -427,7 +416,7 @@ if app_mode == "🚛 배송/주문 관리":
             st.divider()
             st.subheader("∑ 원료 총 필요량")
             for k, v in sorted(total_mat.items(), key=lambda x: x[1], reverse=True):
-                # [v.8.8] 50ml 대사체 전체에 대해 용량 병행 표기
+                # [v.0.8.7] 용량 표기 강화
                 if "PAGI" in k or "인삼대사체" in k or "송이" in k or "장미" in k or "개망초" in k or "EDF" in k:
                     vol_ml = v * 50
                     st.info(f"💧 **{k}**: {v:.1f}개 (총 {vol_ml:,.0f} ml)")
@@ -477,13 +466,27 @@ elif app_mode == "🏭 생산/공정 관리":
         
         # 1. 생산 시작 (Mixing)
         with st.expander("🥛 **1단계: 배합 및 대사 시작 (Mixing)**", expanded=True):
+            # [v.0.8.8] 우유 투입 단위 선택 추가
+            st.markdown("##### 🥛 우유 투입량 설정")
+            c_u1, c_u2 = st.columns(2)
+            with c_u1:
+                milk_unit = st.radio("단위 선택", ["통 (2.3kg 기준)", "kg (직접 입력)"], horizontal=True)
+
+            if "통" in milk_unit:
+                with c_u1:
+                    batch_milk_vol = st.number_input("우유 개수 (통)", 1, 200, 30)
+                milk_kg = batch_milk_vol * 2.3
+                jars_count = int(batch_milk_vol // 2)
+            else:
+                with c_u1:
+                    milk_kg = st.number_input("우유 무게 (kg)", 1.0, 500.0, 69.0, step=0.1)
+                # 1 Jar = 2 Bottles (4.6kg) estimation
+                jars_count = int(milk_kg / 4.6)
+
+            st.markdown("---")
             c_mix1, c_mix2 = st.columns(2)
             with c_mix1:
-                batch_milk_vol = st.number_input("우유 투입 (통)", 1, 100, 30)
                 target_product = st.radio("종류", ["계란 커드 (완제품)", "일반 커드 (중간재)"], horizontal=True)
-            
-            jars_count = batch_milk_vol // 2
-            milk_kg = batch_milk_vol * 2.3
             
             with c_mix2:
                 st.metric("🫙 예상 유리용기 (8L)", f"{jars_count} 개")
@@ -518,7 +521,10 @@ elif app_mode == "🏭 생산/공정 관리":
                 ratio_str = f"개망아카{d_pct}%/시원{c_pct}%" if target_product == "계란 커드 (완제품)" else "일반 15%"
                 status_json = json.dumps({"total": jars_count, "meta": jars_count, "sep": 0, "fail": 0, "done": 0})
                 batch_id = f"{datetime.now(KST).strftime('%y%m%d')}-{target_product}-{uuid.uuid4().hex[:4]}"
+                
+                # [v.0.8.4] 컬럼 순서 변경 반영
                 rec = [batch_id, datetime.now(KST).strftime("%Y-%m-%d"), target_product, "우유+스타터", f"{milk_kg:.1f}", ratio_str, 0, 0, "커드생산", status_json]
+                
                 if save_production_record(rec):
                     st.cache_data.clear()
                     st.success(f"[{batch_id}] 대사 시작! 유리병 {jars_count}개 입고됨.")
@@ -526,7 +532,7 @@ elif app_mode == "🏭 생산/공정 관리":
 
         st.divider()
 
-        # 2. 대사 관리
+        # 2. 대사 관리 (누적 로직 적용)
         st.subheader("🌡️ 2단계: 대사 관리 및 분리 (Metabolism & Separation)")
         if st.button("🔄 상태 새로고침"): st.rerun()
         
@@ -653,7 +659,7 @@ elif app_mode == "🏭 생산/공정 관리":
             p_name = c3.text_input("직접 입력") if p_name_sel == "(직접 입력)" else p_name_sel
             
             c4, c5, c6 = st.columns(3)
-            p_weight = c4.number_input("원재료 무게 (kg)", 0.0, 1000.0, 100.0 if "김치" in p_type else 1.0, step=0.1)
+            p_weight = c4.number_input("원재료 무게 (kg)", 0.0, 1000.0, 1.0, step=0.1)
             p_ratio = c5.selectbox("배합 비율", ["저염김치(배추10:속6)", "1:4", "1:6", "1:8", "1:10", "1:12", "기타"])
             p_note = c6.text_input("비고 (특이사항, pH 등)")
 
