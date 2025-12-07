@@ -27,7 +27,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.0.8.7")
+            st.title("🔒 엘랑비탈 ERP v.8.8")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -106,7 +106,6 @@ def save_to_history(record_list):
         st.error(f"저장 실패: {e}")
         return False
 
-# [v.0.8.4 기준] 컬럼 순서: 투입량, 비율, 완성, 폐기, 비고, 상태
 def save_production_record(record):
     try:
         client = get_gspread_client()
@@ -139,23 +138,16 @@ def update_production_status(batch_id, new_status, add_done=0, add_fail=0):
         sheet = client.open("vpmi_data").worksheet("production")
         cell = sheet.find(batch_id)
         if cell:
-            # 10번째 열: 상태
             sheet.update_cell(cell.row, 10, new_status)
-            
-            # 7번째 열: 완성(개) - 누적
             if add_done > 0:
                 current_done = sheet.cell(cell.row, 7).value
                 try: current_done = int(current_done)
                 except: current_done = 0
                 sheet.update_cell(cell.row, 7, current_done + add_done)
-                
-                # 9번째 열: 비고(Note)에 로그 추가
                 current_note = sheet.cell(cell.row, 9).value
                 log_msg = f"[{datetime.now(KST).strftime('%m/%d')}]+{add_done}"
                 new_note = f"{current_note}, {log_msg}" if current_note else log_msg
                 sheet.update_cell(cell.row, 9, new_note)
-            
-            # 8번째 열: 폐기(병) - 누적
             if add_fail > 0:
                 current_fail = sheet.cell(cell.row, 8).value
                 try: current_fail = int(current_fail)
@@ -236,11 +228,20 @@ def init_session_state():
         ]
         st.session_state.product_list = plist
 
+    # [v.8.8] 레시피 DB 복구 및 강화
     if 'recipe_db' not in st.session_state:
         r_db = {}
         r_db["계란커드 스타터 [혼합]"] = {"desc": "대사체 단순 혼합", "batch_size": 9, "materials": {"개망초 대사체": 8, "아카시아잎 대사체": 1}}
         r_db["계란커드 스타터 [합제]"] = {"desc": "원물 8:1 혼합 대사", "batch_size": 9, "materials": {"개망초꽃(원물)": 8, "아카시아잎(원물)": 1, "EX": 36}}
         r_db["철원산삼 대사체"] = {"desc": "1:8 비율", "batch_size": 9, "materials": {"철원산삼": 1, "EX": 8}}
+        
+        r_db["혼합 [E.R.P.V.P]"] = {"desc": "6배수 혼합/14병", "batch_size": 14, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 12, "송이대사체 (50ml)": 6, "장미꽃 대사체 (50ml)": 6, "Vitamin C (3000mg)": 14, "SiO2 (1ml)": 14, "EX": 900}}
+        r_db["혼합 [P.V.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 1, "Vitamin C (3000mg)": 1, "EX": 100}}
+        r_db["혼합 [P.P.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
+        r_db["혼합 [Ex.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 100}}
+        r_db["혼합 [R.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"장미꽃 대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "인삼사이다": 50}}
+        r_db["혼합 [Edf.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"개망초(EDF) (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "인삼사이다": 50}}
+        r_db["혼합 [P.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
         st.session_state.recipe_db = r_db
     
     if 'regimen_db' not in st.session_state:
@@ -258,7 +259,7 @@ init_session_state()
 st.sidebar.title("📌 메뉴 선택")
 app_mode = st.sidebar.radio("작업 모드를 선택하세요", ["🚛 배송/주문 관리", "🏭 생산/공정 관리"])
 
-st.title(f"🏥 엘랑비탈 ERP v.0.8.7 ({app_mode})")
+st.title(f"🏥 엘랑비탈 ERP v.8.8 ({app_mode})")
 
 def calculate_round_v4(start_date_input, current_date_input, group_type):
     try:
@@ -384,14 +385,16 @@ if app_mode == "🚛 배송/주문 관리":
         df = pd.DataFrame(list(tot.items()), columns=["제품", "수량"]).sort_values("수량", ascending=False)
         st.dataframe(df, use_container_width=True)
 
-    # Tab 3: 한책임
+    # Tab 3: 한책임 (혼합 제조 - 로직 복구)
     with t3:
         st.header("🧪 혼합 제조 (Batch Mixing)")
         req = {}
+        # [v.8.8] Fix: sel_p 값의 구조가 {'items':..., 'group':...} 이므로 정확히 파싱해야 함
         for data_info in sel_p.values():
             items = data_info['items']
             for x in items:
-                if "혼합" in str(x['제품']): req[x['제품']] = req.get(x['제품'], 0) + x['수량']
+                if "혼합" in str(x['제품']): 
+                    req[x['제품']] = req.get(x['제품'], 0) + x['수량']
         
         recipes = st.session_state.recipe_db
         total_mat = {}
@@ -424,7 +427,7 @@ if app_mode == "🚛 배송/주문 관리":
             st.divider()
             st.subheader("∑ 원료 총 필요량")
             for k, v in sorted(total_mat.items(), key=lambda x: x[1], reverse=True):
-                # [v.0.8.7] 용량 표기 강화
+                # [v.8.8] 50ml 대사체 전체에 대해 용량 병행 표기
                 if "PAGI" in k or "인삼대사체" in k or "송이" in k or "장미" in k or "개망초" in k or "EDF" in k:
                     vol_ml = v * 50
                     st.info(f"💧 **{k}**: {v:.1f}개 (총 {vol_ml:,.0f} ml)")
@@ -515,10 +518,7 @@ elif app_mode == "🏭 생산/공정 관리":
                 ratio_str = f"개망아카{d_pct}%/시원{c_pct}%" if target_product == "계란 커드 (완제품)" else "일반 15%"
                 status_json = json.dumps({"total": jars_count, "meta": jars_count, "sep": 0, "fail": 0, "done": 0})
                 batch_id = f"{datetime.now(KST).strftime('%y%m%d')}-{target_product}-{uuid.uuid4().hex[:4]}"
-                
-                # [v.0.8.4] 컬럼 순서 변경 반영
                 rec = [batch_id, datetime.now(KST).strftime("%Y-%m-%d"), target_product, "우유+스타터", f"{milk_kg:.1f}", ratio_str, 0, 0, "커드생산", status_json]
-                
                 if save_production_record(rec):
                     st.cache_data.clear()
                     st.success(f"[{batch_id}] 대사 시작! 유리병 {jars_count}개 입고됨.")
@@ -526,7 +526,7 @@ elif app_mode == "🏭 생산/공정 관리":
 
         st.divider()
 
-        # 2. 대사 관리 (누적 로직 적용)
+        # 2. 대사 관리
         st.subheader("🌡️ 2단계: 대사 관리 및 분리 (Metabolism & Separation)")
         if st.button("🔄 상태 새로고침"): st.rerun()
         
