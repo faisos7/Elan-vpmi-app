@@ -27,7 +27,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.8.7")
+            st.title("🔒 엘랑비탈 ERP v.0.8.7")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -106,6 +106,7 @@ def save_to_history(record_list):
         st.error(f"저장 실패: {e}")
         return False
 
+# [v.0.8.4 기준] 컬럼 순서: 투입량, 비율, 완성, 폐기, 비고, 상태
 def save_production_record(record):
     try:
         client = get_gspread_client()
@@ -138,16 +139,23 @@ def update_production_status(batch_id, new_status, add_done=0, add_fail=0):
         sheet = client.open("vpmi_data").worksheet("production")
         cell = sheet.find(batch_id)
         if cell:
+            # 10번째 열: 상태
             sheet.update_cell(cell.row, 10, new_status)
+            
+            # 7번째 열: 완성(개) - 누적
             if add_done > 0:
                 current_done = sheet.cell(cell.row, 7).value
                 try: current_done = int(current_done)
                 except: current_done = 0
                 sheet.update_cell(cell.row, 7, current_done + add_done)
+                
+                # 9번째 열: 비고(Note)에 로그 추가
                 current_note = sheet.cell(cell.row, 9).value
                 log_msg = f"[{datetime.now(KST).strftime('%m/%d')}]+{add_done}"
                 new_note = f"{current_note}, {log_msg}" if current_note else log_msg
                 sheet.update_cell(cell.row, 9, new_note)
+            
+            # 8번째 열: 폐기(병) - 누적
             if add_fail > 0:
                 current_fail = sheet.cell(cell.row, 8).value
                 try: current_fail = int(current_fail)
@@ -156,7 +164,6 @@ def update_production_status(batch_id, new_status, add_done=0, add_fail=0):
             return True
         return False
     except Exception as e:
-        st.error(f"업데이트 오류: {e}")
         return False
 
 def load_sheet_data(sheet_name):
@@ -251,7 +258,7 @@ init_session_state()
 st.sidebar.title("📌 메뉴 선택")
 app_mode = st.sidebar.radio("작업 모드를 선택하세요", ["🚛 배송/주문 관리", "🏭 생산/공정 관리"])
 
-st.title(f"🏥 엘랑비탈 ERP v.8.7 ({app_mode})")
+st.title(f"🏥 엘랑비탈 ERP v.0.8.7 ({app_mode})")
 
 def calculate_round_v4(start_date_input, current_date_input, group_type):
     try:
@@ -398,7 +405,9 @@ if app_mode == "🚛 배송/주문 관리":
                         in_q = c1.number_input(f"{p} 제조 수량", 0, value=q, key=f"{p}_{q}")
                         r = recipes[p]
                         c2.markdown(f"**{r['desc']}**")
+                        
                         ratio = in_q / r['batch_size'] if r['batch_size'] > 1 else in_q
+                        
                         for m, mq in r['materials'].items():
                             if isinstance(mq, (int, float)):
                                 calc = mq * ratio
@@ -415,7 +424,7 @@ if app_mode == "🚛 배송/주문 관리":
             st.divider()
             st.subheader("∑ 원료 총 필요량")
             for k, v in sorted(total_mat.items(), key=lambda x: x[1], reverse=True):
-                # [v.8.7] 송이, 장미, 개망초, EDF 등 50ml 대사체 용량 표기 강화
+                # [v.0.8.7] 용량 표기 강화
                 if "PAGI" in k or "인삼대사체" in k or "송이" in k or "장미" in k or "개망초" in k or "EDF" in k:
                     vol_ml = v * 50
                     st.info(f"💧 **{k}**: {v:.1f}개 (총 {vol_ml:,.0f} ml)")
@@ -506,7 +515,10 @@ elif app_mode == "🏭 생산/공정 관리":
                 ratio_str = f"개망아카{d_pct}%/시원{c_pct}%" if target_product == "계란 커드 (완제품)" else "일반 15%"
                 status_json = json.dumps({"total": jars_count, "meta": jars_count, "sep": 0, "fail": 0, "done": 0})
                 batch_id = f"{datetime.now(KST).strftime('%y%m%d')}-{target_product}-{uuid.uuid4().hex[:4]}"
+                
+                # [v.0.8.4] 컬럼 순서 변경 반영
                 rec = [batch_id, datetime.now(KST).strftime("%Y-%m-%d"), target_product, "우유+스타터", f"{milk_kg:.1f}", ratio_str, 0, 0, "커드생산", status_json]
+                
                 if save_production_record(rec):
                     st.cache_data.clear()
                     st.success(f"[{batch_id}] 대사 시작! 유리병 {jars_count}개 입고됨.")
@@ -514,7 +526,7 @@ elif app_mode == "🏭 생산/공정 관리":
 
         st.divider()
 
-        # 2. 대사 관리 (누적 로직)
+        # 2. 대사 관리 (누적 로직 적용)
         st.subheader("🌡️ 2단계: 대사 관리 및 분리 (Metabolism & Separation)")
         if st.button("🔄 상태 새로고침"): st.rerun()
         
@@ -631,6 +643,7 @@ elif app_mode == "🏭 생산/공정 관리":
         st.header("🏭 기타 생산 이력")
         with st.container(border=True):
             st.subheader("📝 생산 기록 입력")
+            
             c1, c2, c3 = st.columns(3)
             p_date = c1.date_input("생산일", datetime.now(KST))
             p_type = c2.selectbox("종류", ["저염김치(0.3%)", "무염김치(0%)", "일반 식물 대사체", "철원산삼", "기타"])
@@ -640,7 +653,7 @@ elif app_mode == "🏭 생산/공정 관리":
             p_name = c3.text_input("직접 입력") if p_name_sel == "(직접 입력)" else p_name_sel
             
             c4, c5, c6 = st.columns(3)
-            p_weight = c4.number_input("원재료 무게 (kg)", 0.0, 1000.0, 1.0, step=0.1)
+            p_weight = c4.number_input("원재료 무게 (kg)", 0.0, 1000.0, 100.0 if "김치" in p_type else 1.0, step=0.1)
             p_ratio = c5.selectbox("배합 비율", ["저염김치(배추10:속6)", "1:4", "1:6", "1:8", "1:10", "1:12", "기타"])
             p_note = c6.text_input("비고 (특이사항, pH 등)")
 
@@ -703,4 +716,3 @@ elif app_mode == "🏭 생산/공정 관리":
         if st.button("🔄 pH 새로고침"): st.rerun()
         ph_df = load_sheet_data("ph_logs")
         if not ph_df.empty: st.dataframe(ph_df, use_container_width=True)
-```
