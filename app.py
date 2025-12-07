@@ -27,7 +27,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.0.9.1")
+            st.title("🔒 엘랑비탈 ERP v.0.9.2")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -161,7 +161,7 @@ def update_production_status(sheet_name, batch_id, new_status, add_done=0, add_f
     except Exception as e:
         return False
 
-# [v.0.9.1] 로딩 및 정렬 (최신순)
+# [v.0.9.0] 로딩 및 정렬 (최신순) - 캐싱 적용
 @st.cache_data(ttl=60)
 def load_sheet_data(sheet_name, sort_col=None):
     try:
@@ -259,11 +259,11 @@ def init_session_state():
 
 init_session_state()
 
-# 5. 메인 화면
+# 5. 메인 화면 (사이드바 모드 선택)
 st.sidebar.title("📌 메뉴 선택")
 app_mode = st.sidebar.radio("작업 모드를 선택하세요", ["🚛 배송/주문 관리", "🏭 생산/공정 관리"])
 
-st.title(f"🏥 엘랑비탈 ERP v.0.9.1 ({app_mode})")
+st.title(f"🏥 엘랑비탈 ERP v.0.9.2 ({app_mode})")
 
 def calculate_round_v4(start_date_input, current_date_input, group_type):
     try:
@@ -429,6 +429,7 @@ if app_mode == "🚛 배송/주문 관리":
             st.divider()
             st.subheader("∑ 원료 총 필요량")
             for k, v in sorted(total_mat.items(), key=lambda x: x[1], reverse=True):
+                # [v.0.8.7] 용량 표기 강화
                 if "PAGI" in k or "인삼대사체" in k or "송이" in k or "장미" in k or "개망초" in k or "EDF" in k:
                     vol_ml = v * 50
                     st.info(f"💧 **{k}**: {v:.1f}개 (총 {vol_ml:,.0f} ml)")
@@ -705,26 +706,22 @@ elif app_mode == "🏭 생산/공정 관리":
             ph_date = c1.date_input("측정일", datetime.now(KST), key="ph_date")
             ph_time = c2.time_input("측정시간", datetime.now(KST).time())
             
-            # [v.0.9.1] 두 시트(curd, other)에서 진행중인 배치 통합 로드
+            # [v.0.9.2] 파싱 로직 수정 (괄호 꼬리표 떼기)
             curd_df = load_sheet_data("curd_prod")
             other_df = load_sheet_data("other_prod")
             
             batch_options = ["(직접입력)"]
-            
-            # 진행중 배치 수집
             active_batches = []
+            
             if not curd_df.empty:
-                # 상태가 JSON이고 meta > 0 인 것 찾기 (간소화: '상태' 컬럼 확인)
-                # 커드는 상태가 JSON임
                 for idx, row in curd_df.iterrows():
                     try:
                         status = json.loads(row['상태'])
-                        if status.get('meta', 0) > 0: # 대사중인 것만
+                        if status.get('meta', 0) > 0:
                              active_batches.append(f"{row['배치ID']} (커드)")
                     except: pass
             
             if not other_df.empty:
-                # 기타는 상태가 '진행중' 문자열
                 ongoing = other_df[other_df['상태'] == '진행중']
                 if not ongoing.empty:
                     active_batches += ongoing.apply(lambda x: f"{x['배치ID']} ({x['원재료']})", axis=1).tolist()
@@ -733,7 +730,14 @@ elif app_mode == "🏭 생산/공정 관리":
                 
             c3, c4 = st.columns(2)
             sel_batch = c3.selectbox("진행 중인 배치 선택", batch_options)
-            ph_item = c4.text_input("제품명 (자동/수동)", value=sel_batch.split('(')[0].strip() if '(' in sel_batch else "")
+            
+            # [v.0.9.2] 핵심 수정 부분: 괄호 앞까지만 ID로 인식
+            if '(' in sel_batch and sel_batch != "(직접입력)":
+                batch_id_val = sel_batch.rsplit(' (', 1)[0]
+            else:
+                batch_id_val = ""
+            
+            ph_item = c4.text_input("제품명 (자동/수동)", value=batch_id_val if batch_id_val else "")
             
             c5, c6, c7 = st.columns(3)
             ph_val = c5.number_input("pH 값", 0.0, 14.0, 5.0, step=0.01)
@@ -742,22 +746,21 @@ elif app_mode == "🏭 생산/공정 관리":
             ph_memo = st.text_input("비고")
             
             if st.button("💾 pH 저장"):
-                batch_id_val = sel_batch.split(' ')[0] if '(' in sel_batch else "DIRECT"
+                final_batch_id = batch_id_val if batch_id_val else "DIRECT"
                 dt_str = f"{ph_date.strftime('%Y-%m-%d')} {ph_time.strftime('%H:%M')}"
                 
-                save_ph_log([batch_id_val, dt_str, ph_val, ph_temp, ph_memo])
+                save_ph_log([final_batch_id, dt_str, ph_val, ph_temp, ph_memo])
                 
-                if is_end and batch_id_val != "DIRECT":
-                    # 어디 시트인지 찾아서 업데이트
-                    if "커드" in sel_batch: # 커드는 복잡한 상태 업데이트 필요 (여기선 단순 완료 처리 불가, 탭5 이용 권장)
+                if is_end and final_batch_id != "DIRECT":
+                    if "커드" in sel_batch:
                         st.warning("커드 배치는 [커드 생산 관리] 탭에서 단계별(분리/폐기)로 처리해주세요.")
                     else:
-                        update_production_status("other_prod", batch_id_val, "완료")
+                        update_production_status("other_prod", final_batch_id, "완료")
                         st.cache_data.clear()
                         st.success("기타 생산 대사 종료 처리됨!")
                 else: 
                     st.success("저장됨!")
 
         if st.button("🔄 pH 새로고침"): st.rerun()
-        ph_df = load_sheet_data("ph_logs", "측정일시") # 최신순
+        ph_df = load_sheet_data("ph_logs", "측정일시")
         if not ph_df.empty: st.dataframe(ph_df, use_container_width=True)
