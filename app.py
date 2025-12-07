@@ -27,7 +27,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.8.5")
+            st.title("🔒 엘랑비탈 ERP v.8.6")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -137,31 +137,22 @@ def update_production_status(batch_id, new_status, add_done=0, add_fail=0):
         client = get_gspread_client()
         sheet = client.open("vpmi_data").worksheet("production")
         cell = sheet.find(batch_id)
-        
         if cell:
-            # 10번째 열: 상태
             sheet.update_cell(cell.row, 10, new_status)
-            
-            # 7번째 열: 완성(개) - 누적
             if add_done > 0:
                 current_done = sheet.cell(cell.row, 7).value
                 try: current_done = int(current_done)
                 except: current_done = 0
                 sheet.update_cell(cell.row, 7, current_done + add_done)
-                
-                # 9번째 열: 비고(Note)에 로그 추가
                 current_note = sheet.cell(cell.row, 9).value
                 log_msg = f"[{datetime.now(KST).strftime('%m/%d')}]+{add_done}"
                 new_note = f"{current_note}, {log_msg}" if current_note else log_msg
                 sheet.update_cell(cell.row, 9, new_note)
-            
-            # 8번째 열: 폐기(병) - 누적
             if add_fail > 0:
                 current_fail = sheet.cell(cell.row, 8).value
                 try: current_fail = int(current_fail)
                 except: current_fail = 0
                 sheet.update_cell(cell.row, 8, current_fail + add_fail)
-                
             return True
         return False
     except Exception as e:
@@ -243,6 +234,14 @@ def init_session_state():
         r_db["계란커드 스타터 [혼합]"] = {"desc": "대사체 단순 혼합", "batch_size": 9, "materials": {"개망초 대사체": 8, "아카시아잎 대사체": 1}}
         r_db["계란커드 스타터 [합제]"] = {"desc": "원물 8:1 혼합 대사", "batch_size": 9, "materials": {"개망초꽃(원물)": 8, "아카시아잎(원물)": 1, "EX": 36}}
         r_db["철원산삼 대사체"] = {"desc": "1:8 비율", "batch_size": 9, "materials": {"철원산삼": 1, "EX": 8}}
+        
+        r_db["혼합 [E.R.P.V.P]"] = {"desc": "6배수 혼합/14병", "batch_size": 14, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 12, "송이대사체 (50ml)": 6, "장미꽃 대사체 (50ml)": 6, "Vitamin C (3000mg)": 14, "SiO2 (1ml)": 14, "EX": 900}}
+        r_db["혼합 [P.V.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 1, "Vitamin C (3000mg)": 1, "EX": 100}}
+        r_db["혼합 [P.P.E]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
+        r_db["혼합 [Ex.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 100}}
+        r_db["혼합 [R.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"장미꽃 대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "인삼사이다": 50}}
+        r_db["혼합 [Edf.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"개망초(EDF) (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "인삼사이다": 50}}
+        r_db["혼합 [P.P]"] = {"desc": "1:1 개별 채움", "batch_size": 1, "materials": {"송이대사체 (50ml)": 1, "인삼대사체(PAGI) 항암용 (50ml)": 1, "EX": 50}}
         st.session_state.recipe_db = r_db
     
     if 'regimen_db' not in st.session_state:
@@ -260,7 +259,7 @@ init_session_state()
 st.sidebar.title("📌 메뉴 선택")
 app_mode = st.sidebar.radio("작업 모드를 선택하세요", ["🚛 배송/주문 관리", "🏭 생산/공정 관리"])
 
-st.title(f"🏥 엘랑비탈 ERP v.8.5 ({app_mode})")
+st.title(f"🏥 엘랑비탈 ERP v.8.6 ({app_mode})")
 
 def calculate_round_v4(start_date_input, current_date_input, group_type):
     try:
@@ -338,12 +337,12 @@ if app_mode == "🚛 배송/주문 관리":
                     if st.checkbox(f"{k}{info}", v.get('default'), help=f"시작: {s_date_disp}"): sel_p[k] = {'items': v['items'], 'group': v['group'], 'round': r_num}
 
     st.divider()
-    t1, t2, t3, t4 = st.tabs(["🏷️ 라벨", "🎁 장연구원", "🧪 한책임", "📊 커드 수요량"])
+    t1, t2, t3, t4 = st.tabs(["📦 개인별 포장", "📊 제품별 총합", "🧪 혼합 제조", "📊 커드 수요량"])
 
-    # Tab 1: 라벨
+    # Tab 1: 라벨 (개인별 포장)
     with t1:
         c_head, c_btn = st.columns([2, 1])
-        with c_head: st.header("🖨️ 라벨 출력")
+        with c_head: st.header("📦 개인별 포장 목록 (라벨)")
         with c_btn:
             if st.button("📝 발송 내역 저장"):
                 if not sel_p: st.warning("선택된 환자 없음")
@@ -373,9 +372,9 @@ if app_mode == "🚛 배송/주문 관리":
                         st.markdown("---")
                         st.write("🏥 **엘랑비탈바이오**")
 
-    # Tab 2: 장연구원
+    # Tab 2: 장연구원 (제품별 총합)
     with t2:
-        st.header("🎁 장연구원 (개별 포장)")
+        st.header("📊 제품별 총합 (개별 포장)")
         tot = {}
         for data_info in sel_p.values():
             items = data_info['items']
@@ -386,51 +385,57 @@ if app_mode == "🚛 배송/주문 관리":
         df = pd.DataFrame(list(tot.items()), columns=["제품", "수량"]).sort_values("수량", ascending=False)
         st.dataframe(df, use_container_width=True)
 
-    # Tab 3: 한책임
+    # Tab 3: 한책임 (혼합 제조 - 복구됨)
     with t3:
-        st.header("🧪 한책임 (혼합 제조)")
+        st.header("🧪 혼합 제조 (Batch Mixing)")
         req = {}
         for data_info in sel_p.values():
             items = data_info['items']
             for x in items:
                 if "혼합" in str(x['제품']): req[x['제품']] = req.get(x['제품'], 0) + x['수량']
+        
         recipes = st.session_state.recipe_db
         total_mat = {}
-        if not req: st.info("혼합 제품 없음")
+        
+        if not req: st.info("혼합 제품 주문이 없습니다.")
         else:
             for p, q in req.items():
                 if p in recipes:
-                    with st.expander(f"📌 {p}", expanded=True):
+                    with st.expander(f"📌 {p} (총 {q}개)", expanded=True):
                         c1, c2 = st.columns([1,2])
-                        in_q = c1.number_input(f"{p} 수량", 0, value=q, key=f"{p}_{q}")
+                        in_q = c1.number_input(f"{p} 제조 수량", 0, value=q, key=f"{p}_{q}")
                         r = recipes[p]
                         c2.markdown(f"**{r['desc']}**")
+                        
+                        # 배치 비율 계산
                         ratio = in_q / r['batch_size'] if r['batch_size'] > 1 else in_q
+                        
                         for m, mq in r['materials'].items():
                             if isinstance(mq, (int, float)):
                                 calc = mq * ratio
                                 if "(50ml)" in m:
                                     vol = calc * 50
-                                    c2.write(f"- {m}: **{calc:g}** (50*{calc:g}={vol:g} ml)")
+                                    c2.write(f"- {m}: **{calc:.1f}** (50*{calc:.1f}={vol:.0f} ml)")
                                 elif "EX" in m or "사이다" in m:
-                                    c2.write(f"- {m}: **{calc:g} ml**")
+                                    c2.write(f"- {m}: **{calc:.0f} ml**")
                                 else:
-                                    c2.write(f"- {m}: **{calc:g} 개**")
+                                    c2.write(f"- {m}: **{calc:.1f} 개**")
                                 total_mat[m] = total_mat.get(m, 0) + calc
                             else: c2.write(f"- {m}: {mq}")
-        st.divider()
-        st.subheader("∑ 재료 총합")
-        for k, v in sorted(total_mat.items(), key=lambda x: x[1], reverse=True):
-            if "PAGI" in k or "인삼대사체" in k:
-                vol_ml = v * 50
-                st.info(f"💧 **{k}**: {v:g}개 (총 {vol_ml:,.0f} ml)")
-            elif "사이다" in k:
-                bottles = v / 300
-                st.info(f"🥤 **{k}**: {v:,.0f} ml (약 {bottles:.1f}병)")
-            elif "EX" in k:
-                st.info(f"🛢️ **{k}**: {v:,.0f} ml (약 {v/1000:.1f} L)")
-            else:
-                st.success(f"📦 **{k}**: {v:g} 개")
+            
+            st.divider()
+            st.subheader("∑ 원료 총 필요량")
+            for k, v in sorted(total_mat.items(), key=lambda x: x[1], reverse=True):
+                if "PAGI" in k or "인삼대사체" in k:
+                    vol_ml = v * 50
+                    st.info(f"💧 **{k}**: {v:.1f}개 (총 {vol_ml:,.0f} ml)")
+                elif "사이다" in k:
+                    bottles = v / 300
+                    st.info(f"🥤 **{k}**: {v:,.0f} ml (약 {bottles:.1f}병)")
+                elif "EX" in k:
+                    st.info(f"🛢️ **{k}**: {v:,.0f} ml (약 {v/1000:.1f} L)")
+                else:
+                    st.success(f"📦 **{k}**: {v:.1f} 개")
 
     # Tab 4: 커드 수요량
     with t4:
@@ -488,7 +493,7 @@ elif app_mode == "🏭 생산/공정 관리":
                     
                     st.markdown("**🧪 스타터 배합 (Total %)**")
                     c_s1, c_s2 = st.columns(2)
-                    d_pct = c_s1.number_input("개망아카(%)", 0, 50, 20) # [v.8.5] 명칭 변경
+                    d_pct = c_s1.number_input("개망아카(%)", 0, 50, 20)
                     c_pct = c_s2.number_input("시원한/마시는것(%)", 0, 50, 5)
                     
                     total_base = milk_kg + egg_kg
@@ -508,11 +513,12 @@ elif app_mode == "🏭 생산/공정 관리":
                     if s_c_kg > 0: st.warning(f"❄️ 냉동 시원한 것 사용 시 올리고당 {s_c_kg*28:.0f}g 추가 후 하루 대사")
 
             if st.button("🚀 대사 시작 (항온실 입고)"):
-                # [v.8.5] 엑셀 기록용 명칭도 '개망아카'로 변경
                 ratio_str = f"개망아카{d_pct}%/시원{c_pct}%" if target_product == "계란 커드 (완제품)" else "일반 15%"
                 status_json = json.dumps({"total": jars_count, "meta": jars_count, "sep": 0, "fail": 0, "done": 0})
                 batch_id = f"{datetime.now(KST).strftime('%y%m%d')}-{target_product}-{uuid.uuid4().hex[:4]}"
                 
+                # [v.0.8.4] 컬럼 순서 변경 반영
+                # ["배치ID", "생산일", "종류", "원재료", "투입량(kg)", "비율", "완성(개)", "폐기(병)", "비고", "상태"]
                 rec = [batch_id, datetime.now(KST).strftime("%Y-%m-%d"), target_product, "우유+스타터", f"{milk_kg:.1f}", ratio_str, 0, 0, "커드생산", status_json]
                 
                 if save_production_record(rec):
@@ -580,7 +586,7 @@ elif app_mode == "🏭 생산/공정 관리":
                                     st.success("상태가 업데이트되고 생산량이 누적되었습니다!")
                                     st.rerun()
 
-    # Tab 6~8 (기존 유지)
+    # Tab 6~10 (기존 유지)
     with t6:
         st.header(f"🗓️ 연간 생산 캘린더")
         sel_month = st.selectbox("월 선택", list(range(1, 13)), index=datetime.now(KST).month-1)
@@ -635,7 +641,6 @@ elif app_mode == "🏭 생산/공정 관리":
             csv = hist_df.to_csv(index=False).encode('utf-8-sig')
             st.download_button("📥 다운로드", csv, f"history.csv", "text/csv")
 
-    # Tab 9: 기타 생산 이력 (컬럼 순서 반영)
     with t9:
         st.header("🏭 기타 생산 이력")
         with st.container(border=True):
@@ -676,7 +681,6 @@ elif app_mode == "🏭 생산/공정 관리":
         prod_df = load_sheet_data("production")
         if not prod_df.empty: st.dataframe(prod_df, use_container_width=True)
 
-    # Tab 10: 대사/pH 관리
     with t10:
         st.header("🔬 대사 관리 및 pH 측정")
         with st.container(border=True):
