@@ -27,7 +27,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.0.9.0")
+            st.title("🔒 엘랑비탈 ERP v.0.9.1")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -44,7 +44,6 @@ def get_gspread_client():
     creds = Credentials.from_service_account_info(secrets, scopes=scopes)
     return gspread.authorize(creds)
 
-# [패치] 환자 DB 로딩 캐싱
 @st.cache_data(ttl=60) 
 def load_data_from_sheet():
     try:
@@ -107,17 +106,18 @@ def save_to_history(record_list):
         st.error(f"저장 실패: {e}")
         return False
 
-def save_production_record(record):
+# [v.0.9.1] 시트 분리 (sheet_name 인자 필수)
+def save_production_record(sheet_name, record):
     try:
         client = get_gspread_client()
-        try: sheet = client.open("vpmi_data").worksheet("production")
+        try: sheet = client.open("vpmi_data").worksheet(sheet_name)
         except:
-            sheet = client.open("vpmi_data").add_worksheet(title="production", rows="1000", cols="10")
+            sheet = client.open("vpmi_data").add_worksheet(title=sheet_name, rows="1000", cols="10")
             sheet.append_row(["배치ID", "생산일", "종류", "원재료", "투입량(kg)", "비율", "완성(개)", "폐기(병)", "비고", "상태"])
         sheet.append_row(record)
         return True
     except Exception as e:
-        st.error(f"생산 이력 저장 실패: {e}")
+        st.error(f"생산 이력 저장 실패 ({sheet_name}): {e}")
         return False
 
 def save_ph_log(record):
@@ -133,10 +133,11 @@ def save_ph_log(record):
         st.error(f"pH 기록 저장 실패: {e}")
         return False
 
-def update_production_status(batch_id, new_status, add_done=0, add_fail=0):
+# [v.0.9.1] 상태 업데이트 (시트 지정 가능)
+def update_production_status(sheet_name, batch_id, new_status, add_done=0, add_fail=0):
     try:
         client = get_gspread_client()
-        sheet = client.open("vpmi_data").worksheet("production")
+        sheet = client.open("vpmi_data").worksheet(sheet_name)
         cell = sheet.find(batch_id)
         if cell:
             sheet.update_cell(cell.row, 10, new_status)
@@ -160,14 +161,22 @@ def update_production_status(batch_id, new_status, add_done=0, add_fail=0):
     except Exception as e:
         return False
 
-# [v.0.9.0 중요 패치] 생산 이력 로딩에도 캐싱 적용 (API 호출 절약)
+# [v.0.9.1] 로딩 및 정렬 (최신순)
 @st.cache_data(ttl=60)
-def load_sheet_data(sheet_name):
+def load_sheet_data(sheet_name, sort_col=None):
     try:
         client = get_gspread_client()
         sheet = client.open("vpmi_data").worksheet(sheet_name)
         data = sheet.get_all_records()
-        return pd.DataFrame(data)
+        df = pd.DataFrame(data)
+        
+        # 데이터가 있고 정렬 기준 컬럼이 있다면 내림차순 정렬
+        if not df.empty and sort_col and sort_col in df.columns:
+            try:
+                df = df.sort_values(by=sort_col, ascending=False)
+            except: pass # 정렬 실패 시 그냥 리턴
+            
+        return df
     except:
         return pd.DataFrame()
 
@@ -250,11 +259,11 @@ def init_session_state():
 
 init_session_state()
 
-# 5. 메인 화면 (사이드바 모드 선택)
+# 5. 메인 화면
 st.sidebar.title("📌 메뉴 선택")
 app_mode = st.sidebar.radio("작업 모드를 선택하세요", ["🚛 배송/주문 관리", "🏭 생산/공정 관리"])
 
-st.title(f"🏥 엘랑비탈 ERP v.0.9.0 ({app_mode})")
+st.title(f"🏥 엘랑비탈 ERP v.0.9.1 ({app_mode})")
 
 def calculate_round_v4(start_date_input, current_date_input, group_type):
     try:
@@ -524,9 +533,10 @@ elif app_mode == "🏭 생산/공정 관리":
                 status_json = json.dumps({"total": jars_count, "meta": jars_count, "sep": 0, "fail": 0, "done": 0})
                 batch_id = f"{datetime.now(KST).strftime('%y%m%d')}-{target_product}-{uuid.uuid4().hex[:4]}"
                 
+                # [v.0.9.1] curd_prod 시트에 저장
                 rec = [batch_id, datetime.now(KST).strftime("%Y-%m-%d"), target_product, "우유+스타터", f"{milk_kg:.1f}", ratio_str, 0, 0, "커드생산", status_json]
                 
-                if save_production_record(rec):
+                if save_production_record("curd_prod", rec):
                     st.cache_data.clear()
                     st.success(f"[{batch_id}] 대사 시작! 유리병 {jars_count}개 입고됨.")
                     st.rerun()
@@ -537,10 +547,11 @@ elif app_mode == "🏭 생산/공정 관리":
         st.subheader("🌡️ 2단계: 대사 관리 및 분리 (Metabolism & Separation)")
         if st.button("🔄 상태 새로고침"): st.rerun()
         
-        prod_df = load_sheet_data("production")
+        # [v.0.9.1] 정렬된 데이터 로드
+        prod_df = load_sheet_data("curd_prod", "생산일")
+        
         if not prod_df.empty:
-            curd_df = prod_df[prod_df['종류'].str.contains("커드", na=False)]
-            for idx, row in curd_df.iterrows():
+            for idx, row in prod_df.iterrows():
                 try:
                     status = json.loads(row['상태'])
                     if status.get('meta', 0) == 0 and status.get('sep', 0) == 0: continue
@@ -586,9 +597,10 @@ elif app_mode == "🏭 생산/공정 관리":
                                     updated = True
                                 
                                 if updated:
-                                    update_production_status(row['배치ID'], json.dumps(status), final_prod_cnt, fail_cnt)
+                                    # [v.0.9.1] 시트 이름 전달
+                                    update_production_status("curd_prod", row['배치ID'], json.dumps(status), final_prod_cnt, fail_cnt)
                                     st.cache_data.clear()
-                                    st.success("상태가 업데이트되고 생산량이 누적되었습니다!")
+                                    st.success("업데이트 완료!")
                                     st.rerun()
 
     # Tab 6~8 (기존 유지)
@@ -638,9 +650,9 @@ elif app_mode == "🏭 생산/공정 관리":
                         st.session_state.regimen_db[selected_regimen] = updated_content; st.rerun()
 
     with t8:
-        st.header("📂 발송 이력")
+        st.header("📂 발송 이력 (Shipping Log)")
         if st.button("🔄 이력 새로고침", key="ref_hist_prod"): st.rerun()
-        hist_df = load_sheet_data("history")
+        hist_df = load_sheet_data("history", "발송일") # 최신순
         if not hist_df.empty:
             st.dataframe(hist_df, use_container_width=True)
             csv = hist_df.to_csv(index=False).encode('utf-8-sig')
@@ -675,14 +687,15 @@ elif app_mode == "🏭 생산/공정 관리":
 
             if st.button("💾 생산 기록 저장", key="btn_save_prod"):
                 batch_id = f"{p_date.strftime('%y%m%d')}-{p_name}-{uuid.uuid4().hex[:4]}"
+                # [v.0.9.1] other_prod 시트에 저장
                 rec = [batch_id, p_date.strftime("%Y-%m-%d"), p_type, p_name, p_weight, p_ratio, 0, 0, p_note, "진행중"]
-                if save_production_record(rec): 
+                if save_production_record("other_prod", rec): 
                     st.cache_data.clear()
                     st.success("저장 완료!")
                     st.rerun()
 
         if st.button("🔄 이력 새로고침"): st.rerun()
-        prod_df = load_sheet_data("production")
+        prod_df = load_sheet_data("other_prod", "생산일") # 최신순
         if not prod_df.empty: st.dataframe(prod_df, use_container_width=True)
 
     with t10:
@@ -692,34 +705,59 @@ elif app_mode == "🏭 생산/공정 관리":
             ph_date = c1.date_input("측정일", datetime.now(KST), key="ph_date")
             ph_time = c2.time_input("측정시간", datetime.now(KST).time())
             
-            prod_df = load_sheet_data("production")
+            # [v.0.9.1] 두 시트(curd, other)에서 진행중인 배치 통합 로드
+            curd_df = load_sheet_data("curd_prod")
+            other_df = load_sheet_data("other_prod")
+            
             batch_options = ["(직접입력)"]
-            if not prod_df.empty:
-                ongoing = prod_df[prod_df['상태'] == '진행중']
+            
+            # 진행중 배치 수집
+            active_batches = []
+            if not curd_df.empty:
+                # 상태가 JSON이고 meta > 0 인 것 찾기 (간소화: '상태' 컬럼 확인)
+                # 커드는 상태가 JSON임
+                for idx, row in curd_df.iterrows():
+                    try:
+                        status = json.loads(row['상태'])
+                        if status.get('meta', 0) > 0: # 대사중인 것만
+                             active_batches.append(f"{row['배치ID']} (커드)")
+                    except: pass
+            
+            if not other_df.empty:
+                # 기타는 상태가 '진행중' 문자열
+                ongoing = other_df[other_df['상태'] == '진행중']
                 if not ongoing.empty:
-                    batch_options += ongoing.apply(lambda x: f"{x['배치ID']} ({x['원재료']})", axis=1).tolist()
+                    active_batches += ongoing.apply(lambda x: f"{x['배치ID']} ({x['원재료']})", axis=1).tolist()
+            
+            batch_options += active_batches
                 
             c3, c4 = st.columns(2)
-            sel_batch = c3.selectbox("배치 선택", batch_options)
-            ph_item = c4.text_input("제품명", value=sel_batch.split('(')[1][:-1] if '(' in sel_batch else "")
+            sel_batch = c3.selectbox("진행 중인 배치 선택", batch_options)
+            ph_item = c4.text_input("제품명 (자동/수동)", value=sel_batch.split('(')[0].strip() if '(' in sel_batch else "")
             
             c5, c6, c7 = st.columns(3)
             ph_val = c5.number_input("pH 값", 0.0, 14.0, 5.0, step=0.01)
             ph_temp = c6.number_input("온도 (℃)", 0.0, 50.0, 30.0)
-            is_end = c7.checkbox("대사 종료")
+            is_end = c7.checkbox("대사 종료 (완료 처리)")
             ph_memo = st.text_input("비고")
             
             if st.button("💾 pH 저장"):
                 batch_id_val = sel_batch.split(' ')[0] if '(' in sel_batch else "DIRECT"
                 dt_str = f"{ph_date.strftime('%Y-%m-%d')} {ph_time.strftime('%H:%M')}"
+                
                 save_ph_log([batch_id_val, dt_str, ph_val, ph_temp, ph_memo])
+                
                 if is_end and batch_id_val != "DIRECT":
-                    update_production_status(batch_id_val, "완료")
-                    st.cache_data.clear()
-                    st.success("대사 종료 처리됨!")
+                    # 어디 시트인지 찾아서 업데이트
+                    if "커드" in sel_batch: # 커드는 복잡한 상태 업데이트 필요 (여기선 단순 완료 처리 불가, 탭5 이용 권장)
+                        st.warning("커드 배치는 [커드 생산 관리] 탭에서 단계별(분리/폐기)로 처리해주세요.")
+                    else:
+                        update_production_status("other_prod", batch_id_val, "완료")
+                        st.cache_data.clear()
+                        st.success("기타 생산 대사 종료 처리됨!")
                 else: 
                     st.success("저장됨!")
 
         if st.button("🔄 pH 새로고침"): st.rerun()
-        ph_df = load_sheet_data("ph_logs")
+        ph_df = load_sheet_data("ph_logs", "측정일시") # 최신순
         if not ph_df.empty: st.dataframe(ph_df, use_container_width=True)
