@@ -27,7 +27,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.0.8.9")
+            st.title("🔒 엘랑비탈 ERP v.0.9.0")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -44,6 +44,7 @@ def get_gspread_client():
     creds = Credentials.from_service_account_info(secrets, scopes=scopes)
     return gspread.authorize(creds)
 
+# [패치] 환자 DB 로딩 캐싱
 @st.cache_data(ttl=60) 
 def load_data_from_sheet():
     try:
@@ -144,6 +145,7 @@ def update_production_status(batch_id, new_status, add_done=0, add_fail=0):
                 try: current_done = int(current_done)
                 except: current_done = 0
                 sheet.update_cell(cell.row, 7, current_done + add_done)
+                
                 current_note = sheet.cell(cell.row, 9).value
                 log_msg = f"[{datetime.now(KST).strftime('%m/%d')}]+{add_done}"
                 new_note = f"{current_note}, {log_msg}" if current_note else log_msg
@@ -158,6 +160,8 @@ def update_production_status(batch_id, new_status, add_done=0, add_fail=0):
     except Exception as e:
         return False
 
+# [v.0.9.0 중요 패치] 생산 이력 로딩에도 캐싱 적용 (API 호출 절약)
+@st.cache_data(ttl=60)
 def load_sheet_data(sheet_name):
     try:
         client = get_gspread_client()
@@ -250,7 +254,7 @@ init_session_state()
 st.sidebar.title("📌 메뉴 선택")
 app_mode = st.sidebar.radio("작업 모드를 선택하세요", ["🚛 배송/주문 관리", "🏭 생산/공정 관리"])
 
-st.title(f"🏥 엘랑비탈 ERP v.0.8.9 ({app_mode})")
+st.title(f"🏥 엘랑비탈 ERP v.0.9.0 ({app_mode})")
 
 def calculate_round_v4(start_date_input, current_date_input, group_type):
     try:
@@ -465,7 +469,6 @@ elif app_mode == "🏭 생산/공정 관리":
         
         # 1. 생산 시작 (Mixing)
         with st.expander("🥛 **1단계: 배합 및 대사 시작 (Mixing)**", expanded=True):
-            # [v.0.8.9] 우유 투입 단위 선택 (통 vs kg)
             st.markdown("##### 🥛 우유 투입량 설정")
             c_u1, c_u2 = st.columns(2)
             with c_u1:
@@ -479,7 +482,6 @@ elif app_mode == "🏭 생산/공정 관리":
             else:
                 with c_u1:
                     milk_kg = st.number_input("우유 무게 (kg)", 1.0, 500.0, 69.0, step=0.1)
-                # [v.0.8.9] kg 입력 시 용기 갯수 직접 입력 (비규격 용기 대응)
                 with c_u2:
                     jars_count = st.number_input("사용 용기 수 (개)", 1, 100, 1, help="비규격 용기일 경우 실제 사용한 용기 갯수를 입력하세요.")
 
@@ -522,7 +524,6 @@ elif app_mode == "🏭 생산/공정 관리":
                 status_json = json.dumps({"total": jars_count, "meta": jars_count, "sep": 0, "fail": 0, "done": 0})
                 batch_id = f"{datetime.now(KST).strftime('%y%m%d')}-{target_product}-{uuid.uuid4().hex[:4]}"
                 
-                # [v.0.8.4] 컬럼 순서 변경 반영
                 rec = [batch_id, datetime.now(KST).strftime("%Y-%m-%d"), target_product, "우유+스타터", f"{milk_kg:.1f}", ratio_str, 0, 0, "커드생산", status_json]
                 
                 if save_production_record(rec):
