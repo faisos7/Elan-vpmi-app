@@ -27,7 +27,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.0.9.3")
+            st.title("🔒 엘랑비탈 ERP v.0.9.4")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -255,7 +255,7 @@ init_session_state()
 st.sidebar.title("📌 메뉴 선택")
 app_mode = st.sidebar.radio("작업 모드를 선택하세요", ["🚛 배송/주문 관리", "🏭 생산/공정 관리"])
 
-st.title(f"🏥 엘랑비탈 ERP v.0.9.3 ({app_mode})")
+st.title(f"🏥 엘랑비탈 ERP v.0.9.4 ({app_mode})")
 
 def calculate_round_v4(start_date_input, current_date_input, group_type):
     try:
@@ -511,10 +511,10 @@ elif app_mode == "🏭 생산/공정 관리":
                     req_daisy = s_d_kg * (8/9)
                     req_acacia = s_d_kg * (1/9)
                     
-                    # [v.0.9.3] 총 중량 및 병당 투입량 계산
+                    # [v.0.9.4] 총 중량 표시 위치 변경 (배합 지시서 밖으로 이동)
                     total_mix_weight = total_base + s_d_kg + s_c_kg
                     per_jar = total_mix_weight / jars_count if jars_count > 0 else 0
-                    
+
                     with st.container(border=True):
                         st.markdown("##### 🧾 배합 지시서")
                         cc1, cc2, cc3 = st.columns(3)
@@ -522,15 +522,17 @@ elif app_mode == "🏭 생산/공정 관리":
                         cc2.metric("아카시아(1)", f"{req_acacia:.2f} kg")
                         cc3.metric("시원한 것", f"{s_c_kg:.2f} kg")
                         
-                        st.info(f"⚖️ **총 배합 중량 (대사 전): {total_mix_weight:.2f} kg**")
-                        st.caption(f"👉 한 병당 약 **{per_jar:.2f} kg** 씩 소분하세요.")
-                        
                     if s_c_kg > 0: st.warning(f"❄️ 냉동 시원한 것 사용 시 올리고당 {s_c_kg*28:.0f}g 추가 후 하루 대사")
 
+            # [v.0.9.4] 버튼 바로 위에 총 중량 알림 배치
+            st.warning(f"⚖️ **총 배합 중량 (대사 전): {total_mix_weight:.2f} kg** (한 병당 약 {per_jar:.2f} kg)")
+            
             if st.button("🚀 대사 시작 (항온실 입고)"):
                 ratio_str = f"개망아카{d_pct}%/시원{c_pct}%" if target_product == "계란 커드 (완제품)" else "일반 15%"
                 status_json = json.dumps({"total": jars_count, "meta": jars_count, "sep": 0, "fail": 0, "done": 0})
                 batch_id = f"{datetime.now(KST).strftime('%y%m%d')}-{target_product}-{uuid.uuid4().hex[:4]}"
+                
+                # [v.0.9.1] curd_prod 시트에 저장
                 rec = [batch_id, datetime.now(KST).strftime("%Y-%m-%d"), target_product, "우유+스타터", f"{milk_kg:.1f}", ratio_str, 0, 0, "커드생산", status_json]
                 
                 if save_production_record("curd_prod", rec):
@@ -544,6 +546,7 @@ elif app_mode == "🏭 생산/공정 관리":
         st.subheader("🌡️ 2단계: 대사 관리 및 분리 (Metabolism & Separation)")
         if st.button("🔄 상태 새로고침"): st.rerun()
         
+        # [v.0.9.1] 정렬된 데이터 로드
         prod_df = load_sheet_data("curd_prod", "생산일")
         
         if not prod_df.empty:
@@ -593,6 +596,7 @@ elif app_mode == "🏭 생산/공정 관리":
                                     updated = True
                                 
                                 if updated:
+                                    # [v.0.9.1] 시트 이름 전달
                                     update_production_status("curd_prod", row['배치ID'], json.dumps(status), final_prod_cnt, fail_cnt)
                                     st.cache_data.clear()
                                     st.success("업데이트 완료!")
@@ -647,7 +651,7 @@ elif app_mode == "🏭 생산/공정 관리":
     with t8:
         st.header("📂 발송 이력 (Shipping Log)")
         if st.button("🔄 이력 새로고침", key="ref_hist_prod"): st.rerun()
-        hist_df = load_sheet_data("history", "발송일")
+        hist_df = load_sheet_data("history", "발송일") # 최신순
         if not hist_df.empty:
             st.dataframe(hist_df, use_container_width=True)
             csv = hist_df.to_csv(index=False).encode('utf-8-sig')
@@ -682,6 +686,7 @@ elif app_mode == "🏭 생산/공정 관리":
 
             if st.button("💾 생산 기록 저장", key="btn_save_prod"):
                 batch_id = f"{p_date.strftime('%y%m%d')}-{p_name}-{uuid.uuid4().hex[:4]}"
+                # [v.0.9.1] other_prod 시트에 저장
                 rec = [batch_id, p_date.strftime("%Y-%m-%d"), p_type, p_name, p_weight, p_ratio, 0, 0, p_note, "진행중"]
                 if save_production_record("other_prod", rec): 
                     st.cache_data.clear()
@@ -689,7 +694,7 @@ elif app_mode == "🏭 생산/공정 관리":
                     st.rerun()
 
         if st.button("🔄 이력 새로고침"): st.rerun()
-        prod_df = load_sheet_data("other_prod", "생산일")
+        prod_df = load_sheet_data("other_prod", "생산일") # 최신순
         if not prod_df.empty: st.dataframe(prod_df, use_container_width=True)
 
     with t10:
@@ -699,21 +704,26 @@ elif app_mode == "🏭 생산/공정 관리":
             ph_date = c1.date_input("측정일", datetime.now(KST), key="ph_date")
             ph_time = c2.time_input("측정시간", datetime.now(KST).time())
             
+            # [v.0.9.1] 두 시트(curd, other)에서 진행중인 배치 통합 로드
             curd_df = load_sheet_data("curd_prod")
             other_df = load_sheet_data("other_prod")
             
             batch_options = ["(직접입력)"]
-            active_batches = []
             
+            # 진행중 배치 수집
+            active_batches = []
             if not curd_df.empty:
+                # 상태가 JSON이고 meta > 0 인 것 찾기 (간소화: '상태' 컬럼 확인)
+                # 커드는 상태가 JSON임
                 for idx, row in curd_df.iterrows():
                     try:
                         status = json.loads(row['상태'])
-                        if status.get('meta', 0) > 0:
+                        if status.get('meta', 0) > 0: # 대사중인 것만
                              active_batches.append(f"{row['배치ID']} (커드)")
                     except: pass
             
             if not other_df.empty:
+                # 기타는 상태가 '진행중' 문자열
                 ongoing = other_df[other_df['상태'] == '진행중']
                 if not ongoing.empty:
                     active_batches += ongoing.apply(lambda x: f"{x['배치ID']} ({x['원재료']})", axis=1).tolist()
@@ -723,6 +733,7 @@ elif app_mode == "🏭 생산/공정 관리":
             c3, c4 = st.columns(2)
             sel_batch = c3.selectbox("진행 중인 배치 선택", batch_options)
             
+            # [v.0.9.2] 핵심 수정 부분: 괄호 앞까지만 ID로 인식
             if '(' in sel_batch and sel_batch != "(직접입력)":
                 batch_id_val = sel_batch.rsplit(' (', 1)[0]
             else:
