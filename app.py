@@ -102,8 +102,6 @@ def save_to_history(record_list):
             sheet.append_row(["발송일", "이름", "그룹", "회차", "발송내역"])
         
         # [v.0.9.7] 최신순 정렬을 위해 2번째 줄(헤더 바로 아래)에 삽입
-        # insert_row는 리스트 하나만 받으므로 반복문 사용
-        # 여러 개를 한 번에 넣을 땐 역순으로 넣어야 순서가 맞음 (가장 최근 게 맨 위로)
         for record in reversed(record_list):
             sheet.insert_row(record, 2)
             
@@ -175,7 +173,6 @@ def load_sheet_data(sheet_name, sort_col=None):
         sheet = client.open("vpmi_data").worksheet(sheet_name)
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
-        # [v.0.9.7] 이미 엑셀이 최신순이므로 별도 정렬 없어도 되지만, 안전을 위해 유지
         if not df.empty and sort_col and sort_col in df.columns:
             try: df = df.sort_values(by=sort_col, ascending=False)
             except: pass
@@ -344,7 +341,9 @@ if app_mode == "🚛 배송/주문 관리":
                     if st.checkbox(f"{k}{info}", v.get('default'), help=f"시작: {s_date_disp}"): sel_p[k] = {'items': v['items'], 'group': v['group'], 'round': r_num}
 
     st.divider()
-    t1, t2, t3, t4 = st.tabs(["📦 개인별 포장", "📊 제품별 총합", "🧪 혼합 제조", "📊 커드 수요량"])
+    
+    # [수정됨] 탭을 5개로 늘리고 '발송 이력' 추가
+    t1, t2, t3, t4, t5 = st.tabs(["📦 개인별 포장", "📊 제품별 총합", "🧪 혼합 제조", "📊 커드 수요량", "📂 발송 이력"])
 
     # Tab 1: 라벨
     with t1:
@@ -468,15 +467,26 @@ if app_mode == "🚛 배송/주문 관리":
         st.info(f"🧀 **총 필요 커드:** 약 {total_kg:.2f} kg")
         st.success(f"🥛 **필요 우유:** 약 {math.ceil(milk)}통")
 
+    # [이동됨] Tab 5: 발송 이력 (생산/공정관리에서 이동해 옴)
+    with t5:
+        st.header("📂 발송 이력 (Shipping Log)")
+        if st.button("🔄 이력 새로고침", key="ref_hist_prod"): st.rerun()
+        hist_df = load_sheet_data("history", "발송일")
+        if not hist_df.empty:
+            st.dataframe(hist_df, use_container_width=True)
+            csv = hist_df.to_csv(index=False).encode('utf-8-sig')
+            st.download_button("📥 다운로드", csv, f"history.csv", "text/csv")
+
 # ==============================================================================
 # [MODE 2] 생산/공정 관리
 # ==============================================================================
 elif app_mode == "🏭 생산/공정 관리":
     
-    t5, t6, t7, t8, t9, t10 = st.tabs(["🧀 커드 생산 관리", f"🗓️ 연간 일정", "💊 임상/처방", "📂 발송 이력", "🏭 기타 생산 이력", "🔬 대사/pH 관리"])
+    # [수정됨] 탭 갯수 6개 -> 5개 (발송 이력 제거됨)
+    t6, t7, t8, t9, t10 = st.tabs(["🧀 커드 생산 관리", f"🗓️ 연간 일정", "💊 임상/처방", "🏭 기타 생산 이력", "🔬 대사/pH 관리"])
 
-    # Tab 5: 커드 생산 관리
-    with t5:
+    # Tab 6: 커드 생산 관리
+    with t6:
         st.header(f"🧀 커드 생산 관리")
         
         # 1. 생산 시작 (Mixing)
@@ -655,8 +665,8 @@ elif app_mode == "🏭 생산/공정 관리":
                                     st.success("업데이트 완료!")
                                     st.rerun()
 
-    # Tab 6~8 (기존 유지)
-    with t6:
+    # Tab 7: 연간 일정
+    with t7:
         st.header(f"🗓️ 연간 생산 캘린더")
         sel_month = st.selectbox("월 선택", list(range(1, 13)), index=datetime.now(KST).month-1)
         current_sched = st.session_state.schedule_db[sel_month]
@@ -682,7 +692,8 @@ elif app_mode == "🏭 생산/공정 관리":
         for item in current_sched['main']: st.write(f"- {item}")
         st.info(f"💡 {current_sched['note']}")
 
-    with t7:
+    # Tab 8: 임상/처방
+    with t8:
         st.header("💊 환자별 맞춤 처방 관리")
         regimen_names = list(st.session_state.regimen_db.keys())
         selected_regimen = st.selectbox("처방전 선택", regimen_names + ["(신규 처방 등록)"])
@@ -701,15 +712,7 @@ elif app_mode == "🏭 생산/공정 관리":
                     if st.form_submit_button("수정 저장"):
                         st.session_state.regimen_db[selected_regimen] = updated_content; st.rerun()
 
-    with t8:
-        st.header("📂 발송 이력 (Shipping Log)")
-        if st.button("🔄 이력 새로고침", key="ref_hist_prod"): st.rerun()
-        hist_df = load_sheet_data("history", "발송일")
-        if not hist_df.empty:
-            st.dataframe(hist_df, use_container_width=True)
-            csv = hist_df.to_csv(index=False).encode('utf-8-sig')
-            st.download_button("📥 다운로드", csv, f"history.csv", "text/csv")
-
+    # Tab 9: 기타 생산 이력
     with t9:
         st.header("🏭 기타 생산 이력")
         with st.container(border=True):
@@ -749,6 +752,7 @@ elif app_mode == "🏭 생산/공정 관리":
         prod_df = load_sheet_data("other_prod", "생산일")
         if not prod_df.empty: st.dataframe(prod_df, use_container_width=True)
 
+    # Tab 10: 대사/pH 관리
     with t10:
         st.header("🔬 대사 관리 및 pH 측정")
         with st.container(border=True):
