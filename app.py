@@ -27,7 +27,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.0.9.6")
+            st.title("🔒 엘랑비탈 ERP v.0.9.7")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -100,7 +100,13 @@ def save_to_history(record_list):
         except:
             sheet = client.open("vpmi_data").add_worksheet(title="history", rows="1000", cols="10")
             sheet.append_row(["발송일", "이름", "그룹", "회차", "발송내역"])
-        for record in record_list: sheet.append_row(record)
+        
+        # [v.0.9.7] 최신순 정렬을 위해 2번째 줄(헤더 바로 아래)에 삽입
+        # insert_row는 리스트 하나만 받으므로 반복문 사용
+        # 여러 개를 한 번에 넣을 땐 역순으로 넣어야 순서가 맞음 (가장 최근 게 맨 위로)
+        for record in reversed(record_list):
+            sheet.insert_row(record, 2)
+            
         return True
     except Exception as e:
         st.error(f"저장 실패: {e}")
@@ -113,7 +119,9 @@ def save_production_record(sheet_name, record):
         except:
             sheet = client.open("vpmi_data").add_worksheet(title=sheet_name, rows="1000", cols="10")
             sheet.append_row(["배치ID", "생산일", "종류", "원재료", "투입량(kg)", "비율", "완성(개)", "폐기(병)", "비고", "상태"])
-        sheet.append_row(record)
+        
+        # [v.0.9.7] 2번째 줄에 삽입 (최신순)
+        sheet.insert_row(record, 2)
         return True
     except Exception as e:
         st.error(f"생산 이력 저장 실패 ({sheet_name}): {e}")
@@ -126,7 +134,9 @@ def save_ph_log(record):
         except:
             sheet = client.open("vpmi_data").add_worksheet(title="ph_logs", rows="1000", cols="10")
             sheet.append_row(["배치ID", "측정일시", "pH", "온도", "비고"])
-        sheet.append_row(record)
+            
+        # [v.0.9.7] 2번째 줄에 삽입 (최신순)
+        sheet.insert_row(record, 2)
         return True
     except Exception as e:
         st.error(f"pH 기록 저장 실패: {e}")
@@ -165,6 +175,7 @@ def load_sheet_data(sheet_name, sort_col=None):
         sheet = client.open("vpmi_data").worksheet(sheet_name)
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
+        # [v.0.9.7] 이미 엑셀이 최신순이므로 별도 정렬 없어도 되지만, 안전을 위해 유지
         if not df.empty and sort_col and sort_col in df.columns:
             try: df = df.sort_values(by=sort_col, ascending=False)
             except: pass
@@ -255,7 +266,7 @@ init_session_state()
 st.sidebar.title("📌 메뉴 선택")
 app_mode = st.sidebar.radio("작업 모드를 선택하세요", ["🚛 배송/주문 관리", "🏭 생산/공정 관리"])
 
-st.title(f"🏥 엘랑비탈 ERP v.0.9.6 ({app_mode})")
+st.title(f"🏥 엘랑비탈 ERP v.0.9.7 ({app_mode})")
 
 def calculate_round_v4(start_date_input, current_date_input, group_type):
     try:
@@ -421,7 +432,6 @@ if app_mode == "🚛 배송/주문 관리":
             st.divider()
             st.subheader("∑ 원료 총 필요량")
             for k, v in sorted(total_mat.items(), key=lambda x: x[1], reverse=True):
-                # [v.0.8.7] 용량 표기 강화
                 if "PAGI" in k or "인삼대사체" in k or "송이" in k or "장미" in k or "개망초" in k or "EDF" in k:
                     vol_ml = v * 50
                     st.info(f"💧 **{k}**: {v:.1f}개 (총 {vol_ml:,.0f} ml)")
@@ -473,28 +483,23 @@ elif app_mode == "🏭 생산/공정 관리":
         with st.expander("🥛 **1단계: 배합 및 대사 시작 (Mixing)**", expanded=True):
             st.markdown("##### 🥛 우유 투입량 설정")
             
-            # [v.0.8.9] 계산 모드 선택
             calc_mode = st.radio("계산 모드 선택", ["🥛 우유 투입량 기준 (정방향)", "🫙 용기 용량 기준 (역방향/맞춤)"], horizontal=True)
             
             c_u1, c_u2 = st.columns(2)
             
-            # [CASE 1] 우유 투입량 기준 (기존)
             if "우유 투입량" in calc_mode:
                 with c_u1:
-                    milk_unit = st.radio("우유 단위", ["통 (2.3kg)", "kg (직접입력)"], horizontal=True)
+                    milk_unit = st.radio("우유 단위", ["통 (2.3kg 기준)", "kg (직접 입력)"], horizontal=True)
                 
                 with c_u2:
                     if "통" in milk_unit:
                         batch_milk_vol = st.number_input("우유 개수 (통)", 1, 200, 30)
                         milk_kg = batch_milk_vol * 2.3
-                        # 2통 = 1병 (8L 기준)
                         jars_count = int(batch_milk_vol // 2)
                     else:
                         milk_kg = st.number_input("우유 무게 (kg)", 1.0, 500.0, 69.0, step=0.1)
-                        # [v.0.8.9] kg 입력 시 용기 갯수 직접 입력 (비규격 용기 대응)
                         jars_count = st.number_input("사용 용기 수 (개)", 1, 100, 1, help="비규격 용기일 경우 실제 사용한 용기 갯수를 입력하세요.")
                         
-            # [CASE 2] 용기 용량 기준 (역산/맞춤) - [v.0.9.5]
             else:
                 with c_u1:
                     target_vol_l = st.number_input("용기 1개당 용량 (L)", 1.0, 100.0, 7.0, step=0.5, help="사용할 용기의 크기를 입력하세요.")
@@ -510,18 +515,13 @@ elif app_mode == "🏭 생산/공정 관리":
                 target_product = st.radio("종류", ["계란 커드 (완제품)", "일반 커드 (중간재)"], horizontal=True)
             
             with c_mix2:
-                # 결과 표시 로직 분기
                 if "우유 투입량" in calc_mode:
-                    # [정방향 계산] 우유 양 -> 나머지 재료 계산
                     if target_product == "계란 커드 (완제품)":
                         egg_kg = milk_kg / 4
                         total_base = milk_kg + egg_kg
                     else:
                         total_base = milk_kg
-                        
                 else:
-                    # [역방향 계산] 목표 총량 -> 우유, 계란 역산
-                    # 스타터 비율을 먼저 알아야 역산 가능하므로 미리 받음 (아래 코드 순서상 보여주기용 임시 변수)
                     temp_d_pct = 20
                     temp_c_pct = 5
                     temp_starter_ratio = (temp_d_pct + temp_c_pct) / 100
@@ -531,17 +531,14 @@ elif app_mode == "🏭 생산/공정 관리":
 
                 st.metric("🫙 작업 용기 수", f"{jars_count} 개")
 
-                # --- 공통 배합비 입력 ---
                 st.markdown("**🧪 스타터 배합 (Total %)**")
                 c_s1, c_s2 = st.columns(2)
                 d_pct = c_s1.number_input("개망아카(%)", 0, 50, 20)
                 c_pct = c_s2.number_input("시원한/마시는것(%)", 0, 50, 5)
                 
-                # --- 최종 계산 ---
                 starter_ratio = (d_pct + c_pct) / 100
                 
                 if "우유 투입량" in calc_mode:
-                    # 정방향
                     if target_product == "계란 커드 (완제품)":
                         egg_kg = milk_kg / 4
                         req_egg_cnt = int(egg_kg / 0.045)
@@ -549,9 +546,6 @@ elif app_mode == "🏭 생산/공정 관리":
                     else:
                         total_base = milk_kg
                 else:
-                    # 역방향 (v.0.9.5 핵심)
-                    # 목표 총 중량 = target_total_weight
-                    # Total = Base + (Base * starter_ratio) = Base * (1 + starter_ratio)
                     total_base = target_total_weight / (1 + starter_ratio)
                     
                     if target_product == "계란 커드 (완제품)":
@@ -561,17 +555,14 @@ elif app_mode == "🏭 생산/공정 관리":
                     else:
                         milk_kg = total_base
                         
-                # 스타터 양 계산
                 s_d_kg = total_base * (d_pct/100)
                 s_c_kg = total_base * (c_pct/100)
                 req_daisy = s_d_kg * (8/9)
                 req_acacia = s_d_kg * (1/9)
                 
-                # 총 중량 재확인
                 total_mix_weight = total_base + s_d_kg + s_c_kg
                 per_jar = total_mix_weight / jars_count if jars_count > 0 else 0
 
-                # --- [v.0.9.6] 결과 출력 (시인성 강화) ---
                 st.markdown("##### 🥛 주원료 (Base)")
                 c_base1, c_base2 = st.columns(2)
                 c_base1.metric("🥛 우유", f"{milk_kg:.2f} kg")
@@ -581,7 +572,6 @@ elif app_mode == "🏭 생산/공정 관리":
                 
                 st.markdown("---")
                 
-                # [v.0.9.4] 총 중량 표시 위치 변경 (버튼 위)
                 st.warning(f"⚖️ **총 배합 중량 (대사 전): {total_mix_weight:.2f} kg** (한 병당 약 {per_jar:.2f} kg)")
                 
                 with st.container(border=True):
@@ -598,7 +588,6 @@ elif app_mode == "🏭 생산/공정 관리":
                 status_json = json.dumps({"total": jars_count, "meta": jars_count, "sep": 0, "fail": 0, "done": 0})
                 batch_id = f"{datetime.now(KST).strftime('%y%m%d')}-{target_product}-{uuid.uuid4().hex[:4]}"
                 
-                # [v.0.9.1] curd_prod 시트에 저장
                 rec = [batch_id, datetime.now(KST).strftime("%Y-%m-%d"), target_product, "우유+스타터", f"{milk_kg:.1f}", ratio_str, 0, 0, "커드생산", status_json]
                 
                 if save_production_record("curd_prod", rec):
@@ -608,11 +597,10 @@ elif app_mode == "🏭 생산/공정 관리":
 
         st.divider()
 
-        # 2. 대사 관리 (누적 로직 적용)
+        # 2. 대사 관리
         st.subheader("🌡️ 2단계: 대사 관리 및 분리 (Metabolism & Separation)")
         if st.button("🔄 상태 새로고침"): st.rerun()
         
-        # [v.0.9.1] 정렬된 데이터 로드
         prod_df = load_sheet_data("curd_prod", "생산일")
         
         if not prod_df.empty:
@@ -662,7 +650,6 @@ elif app_mode == "🏭 생산/공정 관리":
                                     updated = True
                                 
                                 if updated:
-                                    # [v.0.9.1] 시트 이름 전달
                                     update_production_status("curd_prod", row['배치ID'], json.dumps(status), final_prod_cnt, fail_cnt)
                                     st.cache_data.clear()
                                     st.success("업데이트 완료!")
@@ -717,7 +704,7 @@ elif app_mode == "🏭 생산/공정 관리":
     with t8:
         st.header("📂 발송 이력 (Shipping Log)")
         if st.button("🔄 이력 새로고침", key="ref_hist_prod"): st.rerun()
-        hist_df = load_sheet_data("history", "발송일") # 최신순
+        hist_df = load_sheet_data("history", "발송일")
         if not hist_df.empty:
             st.dataframe(hist_df, use_container_width=True)
             csv = hist_df.to_csv(index=False).encode('utf-8-sig')
@@ -759,7 +746,7 @@ elif app_mode == "🏭 생산/공정 관리":
                     st.rerun()
 
         if st.button("🔄 이력 새로고침"): st.rerun()
-        prod_df = load_sheet_data("other_prod", "생산일") # 최신순
+        prod_df = load_sheet_data("other_prod", "생산일")
         if not prod_df.empty: st.dataframe(prod_df, use_container_width=True)
 
     with t10:
@@ -769,7 +756,6 @@ elif app_mode == "🏭 생산/공정 관리":
             ph_date = c1.date_input("측정일", datetime.now(KST), key="ph_date")
             ph_time = c2.time_input("측정시간", datetime.now(KST).time())
             
-            # [v.0.9.1] 두 시트(curd, other)에서 진행중인 배치 통합 로드
             curd_df = load_sheet_data("curd_prod")
             other_df = load_sheet_data("other_prod")
             
@@ -794,7 +780,6 @@ elif app_mode == "🏭 생산/공정 관리":
             c3, c4 = st.columns(2)
             sel_batch = c3.selectbox("진행 중인 배치 선택", batch_options)
             
-            # [v.0.9.2] 핵심 수정 부분: 괄호 앞까지만 ID로 인식
             if '(' in sel_batch and sel_batch != "(직접입력)":
                 batch_id_val = sel_batch.rsplit(' (', 1)[0]
             else:
