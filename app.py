@@ -27,7 +27,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.0.9.4")
+            st.title("🔒 엘랑비탈 ERP v.0.9.5")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -255,7 +255,7 @@ init_session_state()
 st.sidebar.title("📌 메뉴 선택")
 app_mode = st.sidebar.radio("작업 모드를 선택하세요", ["🚛 배송/주문 관리", "🏭 생산/공정 관리"])
 
-st.title(f"🏥 엘랑비탈 ERP v.0.9.4 ({app_mode})")
+st.title(f"🏥 엘랑비탈 ERP v.0.9.5 ({app_mode})")
 
 def calculate_round_v4(start_date_input, current_date_input, group_type):
     try:
@@ -421,6 +421,7 @@ if app_mode == "🚛 배송/주문 관리":
             st.divider()
             st.subheader("∑ 원료 총 필요량")
             for k, v in sorted(total_mat.items(), key=lambda x: x[1], reverse=True):
+                # [v.0.8.7] 용량 표기 강화
                 if "PAGI" in k or "인삼대사체" in k or "송이" in k or "장미" in k or "개망초" in k or "EDF" in k:
                     vol_ml = v * 50
                     st.info(f"💧 **{k}**: {v:.1f}개 (총 {vol_ml:,.0f} ml)")
@@ -471,20 +472,41 @@ elif app_mode == "🏭 생산/공정 관리":
         # 1. 생산 시작 (Mixing)
         with st.expander("🥛 **1단계: 배합 및 대사 시작 (Mixing)**", expanded=True):
             st.markdown("##### 🥛 우유 투입량 설정")
+            
+            # [v.0.8.9] 계산 모드 선택 (통 vs kg vs 용기)
+            calc_mode = st.radio("계산 모드 선택", ["🥛 우유 투입량 기준 (정방향)", "🫙 용기 용량 기준 (역방향/맞춤)"], horizontal=True)
+            
             c_u1, c_u2 = st.columns(2)
-            with c_u1:
-                milk_unit = st.radio("단위 선택", ["통 (2.3kg 기준)", "kg (직접 입력)"], horizontal=True)
-
-            if "통" in milk_unit:
+            
+            # [CASE 1] 우유 투입량 기준 (기존)
+            if "우유 투입량" in calc_mode:
                 with c_u1:
-                    batch_milk_vol = st.number_input("우유 개수 (통)", 1, 200, 30)
-                milk_kg = batch_milk_vol * 2.3
-                jars_count = int(batch_milk_vol // 2)
+                    milk_unit = st.radio("우유 단위", ["통 (2.3kg)", "kg (직접입력)"], horizontal=True)
+                
+                with c_u2:
+                    if "통" in milk_unit:
+                        batch_milk_vol = st.number_input("우유 개수 (통)", 1, 200, 30)
+                        milk_kg = batch_milk_vol * 2.3
+                        # 2통 = 1병 (8L 기준)
+                        jars_count = int(batch_milk_vol // 2)
+                    else:
+                        milk_kg = st.number_input("우유 무게 (kg)", 1.0, 500.0, 69.0, step=0.1)
+                        # 4.6kg = 1병 (8L 기준)
+                        jars_count = int(milk_kg / 4.6)
+                        if jars_count < 1: jars_count = 1
+                        
+            # [CASE 2] 용기 용량 기준 (역산/맞춤) - [v.0.9.5]
             else:
                 with c_u1:
-                    milk_kg = st.number_input("우유 무게 (kg)", 1.0, 500.0, 69.0, step=0.1)
+                    target_vol_l = st.number_input("용기 1개당 용량 (L)", 1.0, 100.0, 7.0, step=0.5, help="사용할 용기의 크기를 입력하세요.")
+                    jars_count = st.number_input("작업할 용기 수 (개)", 1, 100, 1)
+                
                 with c_u2:
-                    jars_count = st.number_input("사용 용기 수 (개)", 1, 100, 1, help="비규격 용기일 경우 실제 사용한 용기 갯수를 입력하세요.")
+                    st.info(f"💡 {target_vol_l}L 용기 {jars_count}개를 채우기 위한 레시피를 계산합니다.")
+                    # 7L 용기 -> 약 90% 채움 -> 6.3kg 타겟 (밀도 1.03 감안 시 부피는 조금 덜 참)
+                    # 여기서는 1L = 1kg 근사치 + 90% 채움 계수로 역산
+                    # 목표 총 중량 = 용량 * 0.9 (Fill Rate) * 개수
+                    target_total_weight = target_vol_l * 0.9 * jars_count
 
             st.markdown("---")
             c_mix1, c_mix2 = st.columns(2)
@@ -492,41 +514,95 @@ elif app_mode == "🏭 생산/공정 관리":
                 target_product = st.radio("종류", ["계란 커드 (완제품)", "일반 커드 (중간재)"], horizontal=True)
             
             with c_mix2:
-                st.metric("🫙 작업 용기 수", f"{jars_count} 개")
-                
-                if target_product == "계란 커드 (완제품)":
-                    egg_kg = milk_kg / 4
-                    req_egg_cnt = int(egg_kg / 0.045)
-                    st.write(f"- 계란(깐 것): **{egg_kg:.1f} kg** (약 {req_egg_cnt}알)")
-                    
-                    st.markdown("**🧪 스타터 배합 (Total %)**")
-                    c_s1, c_s2 = st.columns(2)
-                    d_pct = c_s1.number_input("개망아카(%)", 0, 50, 20)
-                    c_pct = c_s2.number_input("시원한/마시는것(%)", 0, 50, 5)
-                    
-                    total_base = milk_kg + egg_kg
-                    s_d_kg = total_base * (d_pct/100)
-                    s_c_kg = total_base * (c_pct/100)
-                    
-                    req_daisy = s_d_kg * (8/9)
-                    req_acacia = s_d_kg * (1/9)
-                    
-                    # [v.0.9.4] 총 중량 표시 위치 변경 (배합 지시서 밖으로 이동)
-                    total_mix_weight = total_base + s_d_kg + s_c_kg
-                    per_jar = total_mix_weight / jars_count if jars_count > 0 else 0
-
-                    with st.container(border=True):
-                        st.markdown("##### 🧾 배합 지시서")
-                        cc1, cc2, cc3 = st.columns(3)
-                        cc1.metric("개망초(8)", f"{req_daisy:.2f} kg")
-                        cc2.metric("아카시아(1)", f"{req_acacia:.2f} kg")
-                        cc3.metric("시원한 것", f"{s_c_kg:.2f} kg")
+                # 결과 표시 로직 분기
+                if "우유 투입량" in calc_mode:
+                    # [정방향 계산] 우유 양 -> 나머지 재료 계산
+                    if target_product == "계란 커드 (완제품)":
+                        egg_kg = milk_kg / 4
+                        total_base = milk_kg + egg_kg
+                    else:
+                        total_base = milk_kg
                         
-                    if s_c_kg > 0: st.warning(f"❄️ 냉동 시원한 것 사용 시 올리고당 {s_c_kg*28:.0f}g 추가 후 하루 대사")
+                else:
+                    # [역방향 계산] 목표 총량 -> 우유, 계란 역산
+                    # 계란커드: 우유(4) + 계란(1) + 스타터(0.25) = 5.25 Part
+                    # 일반커드: 우유(1) + 스타터(0.15) = 1.15 Part
+                    
+                    # 스타터 비율을 먼저 알아야 역산 가능하므로 미리 받음 (아래 코드 순서상 보여주기용 임시 변수)
+                    temp_d_pct = 20
+                    temp_c_pct = 5
+                    temp_starter_ratio = (temp_d_pct + temp_c_pct) / 100
+                    
+                    if target_product == "계란 커드 (완제품)":
+                        # Total = Base * (1 + Starter%)
+                        # Base = Total / (1 + Starter%)
+                        # Milk = Base * 0.8, Egg = Base * 0.2
+                        # 이 부분은 아래 스타터 비율 입력값에 따라 실시간 변동되어야 하므로 아래쪽에서 확정
+                        pass
 
-            # [v.0.9.4] 버튼 바로 위에 총 중량 알림 배치
-            st.warning(f"⚖️ **총 배합 중량 (대사 전): {total_mix_weight:.2f} kg** (한 병당 약 {per_jar:.2f} kg)")
-            
+                st.metric("🫙 작업 용기 수", f"{jars_count} 개")
+
+                # --- 공통 배합비 입력 ---
+                st.markdown("**🧪 스타터 배합 (Total %)**")
+                c_s1, c_s2 = st.columns(2)
+                d_pct = c_s1.number_input("개망아카(%)", 0, 50, 20)
+                c_pct = c_s2.number_input("시원한/마시는것(%)", 0, 50, 5)
+                
+                # --- 최종 계산 ---
+                starter_ratio = (d_pct + c_pct) / 100
+                
+                if "우유 투입량" in calc_mode:
+                    # 정방향
+                    if target_product == "계란 커드 (완제품)":
+                        egg_kg = milk_kg / 4
+                        req_egg_cnt = int(egg_kg / 0.045)
+                        total_base = milk_kg + egg_kg
+                    else:
+                        total_base = milk_kg
+                else:
+                    # 역방향 (v.0.9.5 핵심)
+                    # 목표 총 중량 = target_total_weight
+                    # Total = Base + (Base * starter_ratio) = Base * (1 + starter_ratio)
+                    total_base = target_total_weight / (1 + starter_ratio)
+                    
+                    if target_product == "계란 커드 (완제품)":
+                        milk_kg = total_base * 0.8
+                        egg_kg = total_base * 0.2
+                        req_egg_cnt = int(egg_kg / 0.045)
+                    else:
+                        milk_kg = total_base
+                        
+                # 스타터 양 계산
+                s_d_kg = total_base * (d_pct/100)
+                s_c_kg = total_base * (c_pct/100)
+                req_daisy = s_d_kg * (8/9)
+                req_acacia = s_d_kg * (1/9)
+                
+                # 총 중량 재확인
+                total_mix_weight = total_base + s_d_kg + s_c_kg
+                per_jar = total_mix_weight / jars_count if jars_count > 0 else 0
+
+                # --- 결과 출력 ---
+                if target_product == "계란 커드 (완제품)":
+                     st.write(f"- 🥚 계란(깐 것): **{egg_kg:.2f} kg** (약 {req_egg_cnt}알)")
+                
+                st.write(f"- 🥛 우유: **{milk_kg:.2f} kg**")
+                
+                with st.container(border=True):
+                    st.markdown("##### 🧾 배합 지시서")
+                    cc1, cc2, cc3 = st.columns(3)
+                    cc1.metric("개망초(8)", f"{req_daisy:.2f} kg")
+                    cc2.metric("아카시아(1)", f"{req_acacia:.2f} kg")
+                    cc3.metric("시원한 것", f"{s_c_kg:.2f} kg")
+                    
+                    st.info(f"⚖️ **총 배합 중량: {total_mix_weight:.2f} kg**")
+                    if "용기" in calc_mode:
+                        st.caption(f"👉 {target_vol_l}L 용기 기준 약 **{per_jar:.2f} kg** (90%) 충진")
+                    else:
+                        st.caption(f"👉 한 병당 약 **{per_jar:.2f} kg** 충진 예상")
+                        
+                if s_c_kg > 0: st.warning(f"❄️ 냉동 시원한 것 사용 시 올리고당 {s_c_kg*28:.0f}g 추가 후 하루 대사")
+
             if st.button("🚀 대사 시작 (항온실 입고)"):
                 ratio_str = f"개망아카{d_pct}%/시원{c_pct}%" if target_product == "계란 커드 (완제품)" else "일반 15%"
                 status_json = json.dumps({"total": jars_count, "meta": jars_count, "sep": 0, "fail": 0, "done": 0})
@@ -704,26 +780,22 @@ elif app_mode == "🏭 생산/공정 관리":
             ph_date = c1.date_input("측정일", datetime.now(KST), key="ph_date")
             ph_time = c2.time_input("측정시간", datetime.now(KST).time())
             
-            # [v.0.9.1] 두 시트(curd, other)에서 진행중인 배치 통합 로드
+            # [v.0.9.2] 파싱 로직 수정 (괄호 꼬리표 떼기)
             curd_df = load_sheet_data("curd_prod")
             other_df = load_sheet_data("other_prod")
             
             batch_options = ["(직접입력)"]
-            
-            # 진행중 배치 수집
             active_batches = []
+            
             if not curd_df.empty:
-                # 상태가 JSON이고 meta > 0 인 것 찾기 (간소화: '상태' 컬럼 확인)
-                # 커드는 상태가 JSON임
                 for idx, row in curd_df.iterrows():
                     try:
                         status = json.loads(row['상태'])
-                        if status.get('meta', 0) > 0: # 대사중인 것만
+                        if status.get('meta', 0) > 0:
                              active_batches.append(f"{row['배치ID']} (커드)")
                     except: pass
             
             if not other_df.empty:
-                # 기타는 상태가 '진행중' 문자열
                 ongoing = other_df[other_df['상태'] == '진행중']
                 if not ongoing.empty:
                     active_batches += ongoing.apply(lambda x: f"{x['배치ID']} ({x['원재료']})", axis=1).tolist()
