@@ -180,7 +180,7 @@ def load_sheet_data(sheet_name, sort_col=None):
     except:
         return pd.DataFrame()
 
-# 4. 데이터 초기화
+# 4. 데이터 초기화 (혼합 제조 레시피 복원됨)
 def init_session_state():
     if 'target_date' not in st.session_state:
         st.session_state.target_date = datetime.now(KST)
@@ -243,9 +243,20 @@ def init_session_state():
 
     if 'recipe_db' not in st.session_state:
         r_db = {}
+        # 기존 레시피
         r_db["계란커드 스타터 [혼합]"] = {"desc": "대사체 단순 혼합", "batch_size": 9, "materials": {"개망초 대사체": 8, "아카시아잎 대사체": 1}}
         r_db["계란커드 스타터 [합제]"] = {"desc": "원물 8:1 혼합 대사", "batch_size": 9, "materials": {"개망초꽃(원물)": 8, "아카시아잎(원물)": 1, "EX": 36}}
         r_db["철원산삼 대사체"] = {"desc": "1:8 비율", "batch_size": 9, "materials": {"철원산삼": 1, "EX": 8}}
+        
+        # [복원된 레시피]
+        r_db["혼합 [E.R.P.V.P]"] = {"desc": "다종 혼합 (1:1:1:1:1)", "batch_size": 5, "materials": {"애기똥풀 대사체": 1, "장미꽃 대사체": 1, "인삼대사체(PAGI) 항암용": 1, "송이 대사체": 1, "표고버섯 대사체": 1}}
+        r_db["혼합 [P.V.E]"] = {"desc": "PAGI/표고/EX 기본", "batch_size": 10, "materials": {"인삼대사체(PAGI) 항암용": 3, "표고버섯 대사체": 2, "EX": 5}}
+        r_db["혼합 [P.P.E]"] = {"desc": "PAGI/PAGI뇌/EX", "batch_size": 10, "materials": {"인삼대사체(PAGI) 항암용": 4, "인삼대사체(PAGI) 뇌질환용": 1, "EX": 5}}
+        r_db["혼합 [Ex.P]"] = {"desc": "EX 기반 희석", "batch_size": 10, "materials": {"EX": 8, "인삼대사체(PAGI) 항암용": 2}}
+        r_db["혼합 [R.P]"] = {"desc": "장미/PAGI 혼합", "batch_size": 4, "materials": {"장미꽃 대사체": 3, "인삼대사체(PAGI) 항암용": 1}}
+        r_db["혼합 [Edf.P]"] = {"desc": "개망초/PAGI 혼합", "batch_size": 4, "materials": {"개망초(EDF)": 3, "인삼대사체(PAGI) 항암용": 1}}
+        r_db["혼합 [P.P]"] = {"desc": "PAGI 기본", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용": 1}}
+        
         st.session_state.recipe_db = r_db
     
     if 'regimen_db' not in st.session_state:
@@ -391,7 +402,7 @@ if app_mode == "🚛 배송/주문 관리":
         df = pd.DataFrame(list(tot.items()), columns=["제품", "수량"]).sort_values("수량", ascending=False)
         st.dataframe(df, use_container_width=True)
 
-    # Tab 3: 한책임
+    # Tab 3: 한책임 (혼합 제조 내용 복원됨)
     with t3:
         st.header("🧪 혼합 제조 (Batch Mixing)")
         req = {}
@@ -418,7 +429,7 @@ if app_mode == "🚛 배송/주문 관리":
                         for m, mq in r['materials'].items():
                             if isinstance(mq, (int, float)):
                                 calc = mq * ratio
-                                if "(50ml)" in m:
+                                if "(50ml)" in m or "대사체" in m: # 대사체 추가
                                     vol = calc * 50
                                     c2.write(f"- {m}: **{calc:.1f}** (50*{calc:.1f}={vol:.0f} ml)")
                                 elif "EX" in m or "사이다" in m:
@@ -431,7 +442,7 @@ if app_mode == "🚛 배송/주문 관리":
             st.divider()
             st.subheader("∑ 원료 총 필요량")
             for k, v in sorted(total_mat.items(), key=lambda x: x[1], reverse=True):
-                if "PAGI" in k or "인삼대사체" in k or "송이" in k or "장미" in k or "개망초" in k or "EDF" in k:
+                if "PAGI" in k or "인삼대사체" in k or "송이" in k or "장미" in k or "개망초" in k or "EDF" in k or "대사체" in k: # 대사체 추가
                     vol_ml = v * 50
                     st.info(f"💧 **{k}**: {v:.1f}개 (총 {vol_ml:,.0f} ml)")
                 elif "사이다" in k:
