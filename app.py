@@ -20,7 +20,7 @@ KST = timezone(timedelta(hours=9))
 YIELD_CONSTANTS = {
     "MILK_BOTTLE_TO_CURD_KG": 0.5,  # 우유 1통(2.3L)당 예상 커드 0.5kg
     "PACK_UNIT_KG": 0.15,           # 소포장 단위 150g
-    "DRINK_RATIO": 6.5              # 일반커드 음료 환산 비율
+    "DRINK_RATIO": 6.5              # 일반커드 -> 커드시원한것 희석 배수
 }
 
 # 2. 보안 설정
@@ -135,7 +135,7 @@ def save_production_record(sheet_name, record):
         st.error(f"생산 이력 저장 실패 ({sheet_name}): {e}")
         return False
 
-# [v.0.9.8] 수율/손실 기록 저장 함수 추가
+# [v.0.9.8] 수율/손실 기록 저장 함수
 def save_yield_log(record):
     try:
         client = get_gspread_client()
@@ -512,14 +512,14 @@ elif app_mode == "🏭 생산/공정 관리":
 
         col_pred, col_record = st.columns([1, 1])
 
-        # 1. 생산 예측 (Prediction)
+        # 1. 생산 예측 (Calculator)
         with col_pred:
             with st.container(border=True):
                 st.subheader("1. 생산 예측 (Calculator)")
                 
-                # 입력
+                # 입력 (수정됨: 제품명 간소화)
                 y_bottles = st.number_input("🥛 우유 투입 (통/Bottle)", min_value=0, value=10, step=1, key="y_bottles")
-                y_mode = st.radio("생산 제품 선택", ["환자용 (계란커드 150g)", "일반용 (벌크/음료베이스)"], key="y_mode")
+                y_mode = st.radio("생산 제품 선택", ["계란커드", "일반커드"], key="y_mode")
                 
                 # 계산
                 y_expected_kg = y_bottles * YIELD_CONSTANTS["MILK_BOTTLE_TO_CURD_KG"]
@@ -527,14 +527,15 @@ elif app_mode == "🏭 생산/공정 관리":
                 st.markdown("---")
                 st.markdown(f"**📉 총 예상 커드 무게: :blue[{y_expected_kg:.1f} kg]**")
                 
-                if "환자용" in y_mode:
+                # 출력 로직 수정
+                if y_mode == "계란커드":
                     y_packs = int(y_expected_kg / YIELD_CONSTANTS["PACK_UNIT_KG"])
                     y_rem = (y_expected_kg % YIELD_CONSTANTS["PACK_UNIT_KG"]) * 1000
                     st.success(f"📦 예상 포장: **{y_packs} 팩**")
                     st.caption(f"└ 자투리 잔여: {y_rem:.0f} g")
                 else:
                     y_drink = y_expected_kg * YIELD_CONSTANTS["DRINK_RATIO"]
-                    st.success(f"🥤 음료 환산: **{y_drink:.1f} kg**")
+                    st.success(f"🥤 커드시원한것 환산: **{y_drink:.1f} kg**") # 수정됨
                     st.caption(f"└ 희석비 1:{YIELD_CONSTANTS['DRINK_RATIO']-1} 적용 시")
 
         # 2. 수율 기록 (Actual Record)
@@ -559,8 +560,8 @@ elif app_mode == "🏭 생산/공정 관리":
                     
                     if st.button("💾 수율 기록 저장"):
                         now_str = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
-                        mode_str = "계란커드" if "환자용" in y_mode else "일반커드"
-                        rec = [now_str, mode_str, y_bottles, y_expected_kg, y_actual, round(loss_rate, 2), y_note]
+                        # 모드명은 이미 간소화되었으므로 그대로 사용
+                        rec = [now_str, y_mode, y_bottles, y_expected_kg, y_actual, round(loss_rate, 2), y_note]
                         
                         if save_yield_log(rec):
                             st.success("수율 데이터 저장 완료!")
