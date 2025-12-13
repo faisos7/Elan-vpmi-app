@@ -8,11 +8,20 @@ import holidays
 import uuid
 import json
 
-# 1. 페이지 설정
-st.set_page_config(page_title="엘랑비탈 ERP", page_icon="🏥", layout="wide")
+# ==============================================================================
+# 1. 시스템 설정 및 상수 (Config)
+# ==============================================================================
+st.set_page_config(page_title="엘랑비탈 ERP v.0.9.8", page_icon="🏥", layout="wide")
 
 # [중요] 한국 시간(KST) 설정
 KST = timezone(timedelta(hours=9))
+
+# [v.0.9.8] 수율 관리 상수 정의
+YIELD_CONSTANTS = {
+    "MILK_BOTTLE_TO_CURD_KG": 0.5,  # 우유 1통(2.3L)당 예상 커드 0.5kg
+    "PACK_UNIT_KG": 0.15,           # 소포장 단위 150g
+    "DRINK_RATIO": 6.5              # 일반커드 음료 환산 비율
+}
 
 # 2. 보안 설정
 def check_password():
@@ -27,7 +36,8 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
-            st.title("🔒 엘랑비탈 ERP v.0.9.7")
+            st.title("🔒 엘랑비탈 ERP v.0.9.8")
+            st.markdown("---")
             with st.form("login"):
                 st.text_input("비밀번호:", type="password", key="password")
                 st.form_submit_button("로그인", on_click=password_entered)
@@ -37,7 +47,9 @@ def check_password():
 if not check_password():
     st.stop()
 
-# 3. 구글 시트 데이터 로딩 및 저장 함수
+# ==============================================================================
+# 3. 구글 시트 연동 함수 (Gspread)
+# ==============================================================================
 def get_gspread_client():
     secrets = st.secrets["gcp_service_account"]
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -101,7 +113,6 @@ def save_to_history(record_list):
             sheet = client.open("vpmi_data").add_worksheet(title="history", rows="1000", cols="10")
             sheet.append_row(["발송일", "이름", "그룹", "회차", "발송내역"])
         
-        # [v.0.9.7] 최신순 정렬을 위해 2번째 줄(헤더 바로 아래)에 삽입
         for record in reversed(record_list):
             sheet.insert_row(record, 2)
             
@@ -118,11 +129,25 @@ def save_production_record(sheet_name, record):
             sheet = client.open("vpmi_data").add_worksheet(title=sheet_name, rows="1000", cols="10")
             sheet.append_row(["배치ID", "생산일", "종류", "원재료", "투입량(kg)", "비율", "완성(개)", "폐기(병)", "비고", "상태"])
         
-        # [v.0.9.7] 2번째 줄에 삽입 (최신순)
         sheet.insert_row(record, 2)
         return True
     except Exception as e:
         st.error(f"생산 이력 저장 실패 ({sheet_name}): {e}")
+        return False
+
+# [v.0.9.8] 수율/손실 기록 저장 함수 추가
+def save_yield_log(record):
+    try:
+        client = get_gspread_client()
+        try: sheet = client.open("vpmi_data").worksheet("yield_logs")
+        except:
+            sheet = client.open("vpmi_data").add_worksheet(title="yield_logs", rows="1000", cols="10")
+            sheet.append_row(["기록일시", "생산모드", "투입(통)", "예상(kg)", "실제(kg)", "손실률(%)", "비고"])
+        
+        sheet.insert_row(record, 2)
+        return True
+    except Exception as e:
+        st.error(f"수율 기록 저장 실패: {e}")
         return False
 
 def save_ph_log(record):
@@ -133,7 +158,6 @@ def save_ph_log(record):
             sheet = client.open("vpmi_data").add_worksheet(title="ph_logs", rows="1000", cols="10")
             sheet.append_row(["배치ID", "측정일시", "pH", "온도", "비고"])
             
-        # [v.0.9.7] 2번째 줄에 삽입 (최신순)
         sheet.insert_row(record, 2)
         return True
     except Exception as e:
@@ -180,7 +204,9 @@ def load_sheet_data(sheet_name, sort_col=None):
     except:
         return pd.DataFrame()
 
-# 4. 데이터 초기화 (혼합 제조 레시피 복원됨)
+# ==============================================================================
+# 4. 데이터 초기화 및 세션 상태
+# ==============================================================================
 def init_session_state():
     if 'target_date' not in st.session_state:
         st.session_state.target_date = datetime.now(KST)
@@ -229,26 +255,11 @@ def init_session_state():
         sorted_others = sorted(list(set(full_list) - set(priority_list)))
         st.session_state.raw_material_list = priority_list + sorted_others
 
-    if 'product_list' not in st.session_state:
-        plist = [
-            "시원한 것", "마시는 것", "커드 시원한 것", "계란 커드", "EX",
-            "철원산삼 대사체", "인삼대사체(PAGI) 항암용", "인삼대사체(PAGI) 뇌질환용",
-            "표고버섯 대사체", "개망초(EDF)", "장미꽃 대사체",
-            "애기똥풀 대사체", "인삼 사이다", "송이 대사체",
-            "PAGI 희석액", "Vitamin C", "SiO2", "계란커드 스타터",
-            "혼합 [E.R.P.V.P]", "혼합 [P.V.E]", "혼합 [P.P.E]",
-            "혼합 [Ex.P]", "혼합 [R.P]", "혼합 [Edf.P]", "혼합 [P.P]"
-        ]
-        st.session_state.product_list = plist
-
     if 'recipe_db' not in st.session_state:
         r_db = {}
-        # 기존 레시피
         r_db["계란커드 스타터 [혼합]"] = {"desc": "대사체 단순 혼합", "batch_size": 9, "materials": {"개망초 대사체": 8, "아카시아잎 대사체": 1}}
         r_db["계란커드 스타터 [합제]"] = {"desc": "원물 8:1 혼합 대사", "batch_size": 9, "materials": {"개망초꽃(원물)": 8, "아카시아잎(원물)": 1, "EX": 36}}
         r_db["철원산삼 대사체"] = {"desc": "1:8 비율", "batch_size": 9, "materials": {"철원산삼": 1, "EX": 8}}
-        
-        # [복원된 레시피]
         r_db["혼합 [E.R.P.V.P]"] = {"desc": "다종 혼합 (1:1:1:1:1)", "batch_size": 5, "materials": {"애기똥풀 대사체": 1, "장미꽃 대사체": 1, "인삼대사체(PAGI) 항암용": 1, "송이 대사체": 1, "표고버섯 대사체": 1}}
         r_db["혼합 [P.V.E]"] = {"desc": "PAGI/표고/EX 기본", "batch_size": 10, "materials": {"인삼대사체(PAGI) 항암용": 3, "표고버섯 대사체": 2, "EX": 5}}
         r_db["혼합 [P.P.E]"] = {"desc": "PAGI/PAGI뇌/EX", "batch_size": 10, "materials": {"인삼대사체(PAGI) 항암용": 4, "인삼대사체(PAGI) 뇌질환용": 1, "EX": 5}}
@@ -256,7 +267,6 @@ def init_session_state():
         r_db["혼합 [R.P]"] = {"desc": "장미/PAGI 혼합", "batch_size": 4, "materials": {"장미꽃 대사체": 3, "인삼대사체(PAGI) 항암용": 1}}
         r_db["혼합 [Edf.P]"] = {"desc": "개망초/PAGI 혼합", "batch_size": 4, "materials": {"개망초(EDF)": 3, "인삼대사체(PAGI) 항암용": 1}}
         r_db["혼합 [P.P]"] = {"desc": "PAGI 기본", "batch_size": 1, "materials": {"인삼대사체(PAGI) 항암용": 1}}
-        
         st.session_state.recipe_db = r_db
     
     if 'regimen_db' not in st.session_state:
@@ -270,11 +280,11 @@ def init_session_state():
 
 init_session_state()
 
-# 5. 메인 화면 (사이드바 모드 선택)
+# 5. 메인 화면 구성
 st.sidebar.title("📌 메뉴 선택")
 app_mode = st.sidebar.radio("작업 모드를 선택하세요", ["🚛 배송/주문 관리", "🏭 생산/공정 관리"])
 
-st.title(f"🏥 엘랑비탈 ERP v.0.9.7 ({app_mode})")
+st.title(f"🏥 엘랑비탈 ERP v.0.9.8 ({app_mode})")
 
 def calculate_round_v4(start_date_input, current_date_input, group_type):
     try:
@@ -353,7 +363,6 @@ if app_mode == "🚛 배송/주문 관리":
 
     st.divider()
     
-    # [수정됨] 탭을 5개로 늘리고 '발송 이력' 추가
     t1, t2, t3, t4, t5 = st.tabs(["📦 개인별 포장", "📊 제품별 총합", "🧪 혼합 제조", "📊 커드 수요량", "📂 발송 이력"])
 
     # Tab 1: 라벨
@@ -402,7 +411,7 @@ if app_mode == "🚛 배송/주문 관리":
         df = pd.DataFrame(list(tot.items()), columns=["제품", "수량"]).sort_values("수량", ascending=False)
         st.dataframe(df, use_container_width=True)
 
-    # Tab 3: 한책임 (혼합 제조 내용 복원됨)
+    # Tab 3: 한책임
     with t3:
         st.header("🧪 혼합 제조 (Batch Mixing)")
         req = {}
@@ -429,7 +438,7 @@ if app_mode == "🚛 배송/주문 관리":
                         for m, mq in r['materials'].items():
                             if isinstance(mq, (int, float)):
                                 calc = mq * ratio
-                                if "(50ml)" in m or "대사체" in m: # 대사체 추가
+                                if "(50ml)" in m or "대사체" in m:
                                     vol = calc * 50
                                     c2.write(f"- {m}: **{calc:.1f}** (50*{calc:.1f}={vol:.0f} ml)")
                                 elif "EX" in m or "사이다" in m:
@@ -442,7 +451,7 @@ if app_mode == "🚛 배송/주문 관리":
             st.divider()
             st.subheader("∑ 원료 총 필요량")
             for k, v in sorted(total_mat.items(), key=lambda x: x[1], reverse=True):
-                if "PAGI" in k or "인삼대사체" in k or "송이" in k or "장미" in k or "개망초" in k or "EDF" in k or "대사체" in k: # 대사체 추가
+                if "PAGI" in k or "인삼대사체" in k or "송이" in k or "장미" in k or "개망초" in k or "EDF" in k or "대사체" in k:
                     vol_ml = v * 50
                     st.info(f"💧 **{k}**: {v:.1f}개 (총 {vol_ml:,.0f} ml)")
                 elif "사이다" in k:
@@ -478,7 +487,7 @@ if app_mode == "🚛 배송/주문 관리":
         st.info(f"🧀 **총 필요 커드:** 약 {total_kg:.2f} kg")
         st.success(f"🥛 **필요 우유:** 약 {math.ceil(milk)}통")
 
-    # [이동됨] Tab 5: 발송 이력 (생산/공정관리에서 이동해 옴)
+    # Tab 5: 발송 이력
     with t5:
         st.header("📂 발송 이력 (Shipping Log)")
         if st.button("🔄 이력 새로고침", key="ref_hist_prod"): st.rerun()
@@ -493,10 +502,80 @@ if app_mode == "🚛 배송/주문 관리":
 # ==============================================================================
 elif app_mode == "🏭 생산/공정 관리":
     
-    # [수정됨] 탭 갯수 6개 -> 5개 (발송 이력 제거됨)
-    t6, t7, t8, t9, t10 = st.tabs(["🧀 커드 생산 관리", f"🗓️ 연간 일정", "💊 임상/처방", "🏭 기타 생산 이력", "🔬 대사/pH 관리"])
+    # [v.0.9.8] '수율/예측' 탭 추가
+    t_yield, t6, t7, t8, t9, t10 = st.tabs(["📊 수율/예측", "🧀 커드 생산 관리", "🗓️ 연간 일정", "💊 임상/처방", "🏭 기타 생산 이력", "🔬 대사/pH 관리"])
 
-    # Tab 6: 커드 생산 관리
+    # [NEW] Tab Yield: 생산량 예측 및 수율 관리
+    with t_yield:
+        st.header("📊 생산량 예측 및 수율 관리 (Yield Manager)")
+        st.info("💡 우유 투입량에 따른 **예상 결과**를 확인하고, 실제 생산 후 **손실률(Loss)**을 기록하세요.")
+
+        col_pred, col_record = st.columns([1, 1])
+
+        # 1. 생산 예측 (Prediction)
+        with col_pred:
+            with st.container(border=True):
+                st.subheader("1. 생산 예측 (Calculator)")
+                
+                # 입력
+                y_bottles = st.number_input("🥛 우유 투입 (통/Bottle)", min_value=0, value=10, step=1, key="y_bottles")
+                y_mode = st.radio("생산 제품 선택", ["환자용 (계란커드 150g)", "일반용 (벌크/음료베이스)"], key="y_mode")
+                
+                # 계산
+                y_expected_kg = y_bottles * YIELD_CONSTANTS["MILK_BOTTLE_TO_CURD_KG"]
+                
+                st.markdown("---")
+                st.markdown(f"**📉 총 예상 커드 무게: :blue[{y_expected_kg:.1f} kg]**")
+                
+                if "환자용" in y_mode:
+                    y_packs = int(y_expected_kg / YIELD_CONSTANTS["PACK_UNIT_KG"])
+                    y_rem = (y_expected_kg % YIELD_CONSTANTS["PACK_UNIT_KG"]) * 1000
+                    st.success(f"📦 예상 포장: **{y_packs} 팩**")
+                    st.caption(f"└ 자투리 잔여: {y_rem:.0f} g")
+                else:
+                    y_drink = y_expected_kg * YIELD_CONSTANTS["DRINK_RATIO"]
+                    st.success(f"🥤 음료 환산: **{y_drink:.1f} kg**")
+                    st.caption(f"└ 희석비 1:{YIELD_CONSTANTS['DRINK_RATIO']-1} 적용 시")
+
+        # 2. 수율 기록 (Actual Record)
+        with col_record:
+            with st.container(border=True):
+                st.subheader("2. 작업 완료 및 수율 체크")
+                
+                y_actual = st.number_input("⚖️ 실제 생산된 커드 무게 (kg)", min_value=0.0, format="%.2f", key="y_actual")
+                y_note = st.text_input("비고 (특이사항)", key="y_note")
+                
+                if y_actual > 0:
+                    loss_kg = y_expected_kg - y_actual
+                    loss_rate = (loss_kg / y_expected_kg * 100) if y_expected_kg > 0 else 0
+                    
+                    st.markdown("---")
+                    if loss_rate > 10:
+                        st.error(f"🚨 손실률: {loss_rate:.1f}% (주의 필요)")
+                    elif loss_rate < 0:
+                        st.warning(f"❓ 수율 오버: {abs(loss_rate):.1f}% (예상보다 무거움)")
+                    else:
+                        st.success(f"✅ 손실률: {loss_rate:.1f}% (양호)")
+                    
+                    if st.button("💾 수율 기록 저장"):
+                        now_str = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
+                        mode_str = "계란커드" if "환자용" in y_mode else "일반커드"
+                        rec = [now_str, mode_str, y_bottles, y_expected_kg, y_actual, round(loss_rate, 2), y_note]
+                        
+                        if save_yield_log(rec):
+                            st.success("수율 데이터 저장 완료!")
+                        else:
+                            st.error("저장 실패")
+                
+        # 기록 표시
+        st.divider()
+        st.subheader("📋 최근 수율 기록")
+        if st.button("🔄 기록 새로고침", key="ref_yield"): st.rerun()
+        y_df = load_sheet_data("yield_logs", "기록일시")
+        if not y_df.empty:
+            st.dataframe(y_df, use_container_width=True)
+
+    # Tab 6: 커드 생산 관리 (기존 유지)
     with t6:
         st.header(f"🧀 커드 생산 관리")
         
