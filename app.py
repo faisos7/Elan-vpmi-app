@@ -331,29 +331,43 @@ if main_menu == "🚛 배송 및 주문 관리":
         st.metric("🧀 총 소요 커드 무게", f"{total_kg:.2f} kg")
         st.write(f"🥛 원재료 우유 환산: 약 **{math.ceil((total_kg/9)*16)}** 통 투입 필요")
 
+
+
+
+
+
 # ==============================================================================
 # 8. 모드 2: 누적 데이터 분석 (방식 1 & 방식 2 및 세부 히스토리 최적화)
 # ==============================================================================
 elif main_menu == "📈 누적 데이터 분석":
     st.header("📈 누적 데이터 정밀 분석")
+    
+    # 히스토리 시트 로드
     h_df = get_sheet_as_df("history", "발송일")
     
     if not h_df.empty:
+        # 분석 대상 선택 폼
         with st.form("stat_form"):
             st.subheader("🔍 분석 대상 환자 다중 선택")
             targets = st.multiselect("사람들을 선택한 후 버튼을 누르세요", sorted(h_df['이름'].unique()))
             submit_btn = st.form_submit_button("✅ 분석 시작")
 
         if submit_btn and targets:
+            # 선택된 환자 데이터만 필터링
             filtered_h = h_df[h_df['이름'].isin(targets)]
             
-            # 히스토리 데이터 분해 및 파싱
+            # 히스토리 문자열 데이터(제품:수량) 분해 및 파싱
             parsed_data = []
             for _, row in filtered_h.iterrows():
                 for itm in str(row['발송내역']).split(','):
                     if ':' in itm:
                         pn, pq = itm.split(':')
-                        try: parsed_data.append({"이름": row['이름'], "제품": pn.strip(), "수량": int(pq.strip())})
+                        try: 
+                            parsed_data.append({
+                                "이름": row['이름'], 
+                                "제품": pn.strip(), 
+                                "수량": int(pq.strip())
+                            })
                         except: continue
             p_df = pd.DataFrame(parsed_data)
             
@@ -362,59 +376,92 @@ elif main_menu == "📈 누적 데이터 분석":
             
             with col_s1:
                 st.markdown("#### 1️⃣ 방식 1: 패키징 합계")
+                st.caption("실제로 보낸 혼합 제품 명칭별 누적 수량")
                 summary1 = p_df.groupby("제품")["수량"].sum().reset_index().sort_values("수량", ascending=False)
-                # 컴팩트한 레이아웃 적용
+                
+                # 방식 1 표 너비 최적화 (글자 너비의 1.5배 수준)
                 st.dataframe(
                     summary1, 
                     hide_index=True,
                     use_container_width=False,
                     column_config={
-                        "제품": st.column_config.TextColumn("제품 명칭", width=150),
-                        "수량": st.column_config.NumberColumn("누적 수량", width=80, format="%d 개")
+                        "제품": st.column_config.TextColumn("제품 명칭", width=180), # 글자 대비 넉넉히
+                        "수량": st.column_config.NumberColumn("누적 수량", width=100, format="%d 개")
                     }
                 )
             
             with col_s2:
                 st.markdown("#### 2️⃣ 방식 2: 성분 분해 합계")
+                st.caption("2,100ml 배치 레시피(병수 단위)로 쪼갠 합계")
                 r_db = st.session_state.recipe_db
                 stats = {}
                 for _, r in p_df.iterrows():
                     if r['제품'] in r_db:
-                        ratio = r['수량'] / r_db[r['제품']]['batch_size']
-                        for mn, mq in r_db[r['제품']]['materials'].items():
+                        rcp = r_db[r['제품']]
+                        ratio = r['수량'] / rcp['batch_size']
+                        for mn, mq in rcp['materials'].items():
                             stats[mn] = stats.get(mn, 0) + (mq * ratio)
                     else:
                         stats[r['제품']] = stats.get(r['제품'], 0) + r['수량']
                 
                 summary2 = pd.DataFrame(list(stats.items()), columns=["성분명", "총합"]).sort_values("총합", ascending=False)
+                
+                # 방식 2 표 너비 최적화 (글자 너비의 1.5배 수준)
                 st.dataframe(
                     summary2, 
                     hide_index=True,
                     use_container_width=False,
                     column_config={
-                        "성분명": st.column_config.TextColumn("개별 성분", width=150),
-                        "총합": st.column_config.NumberColumn("최종 소요량", width=80, format="%.1f")
+                        "성분명": st.column_config.TextColumn("개별 성분", width=180),
+                        "총합": st.column_config.NumberColumn("최종 소요량", width=100, format="%.1f")
                     }
                 )
 
             st.divider()
             st.subheader("👤 선택 환자별 세부 히스토리")
             
-            # [이미지 피드백 반영] 열 너비 정밀 조정 (픽셀 단위 고정)
+            # [이미지 분석 반영] 글자(문장) 너비의 1.5배로 정밀 조정 (픽셀 단위 고정)
             st.dataframe(
                 filtered_h, 
-                use_container_width=True, # 표 전체는 화면 너비에 맞춤
+                use_container_width=True, 
                 hide_index=True,
                 column_config={
-                    "발송일": st.column_config.TextColumn("발송일", width=100),
-                    "이름": st.column_config.TextColumn("환자명", width=80),
-                    "그룹": st.column_config.TextColumn("그룹명", width=90),
-                    "회차": st.column_config.NumberColumn("회차", width=60, format="%d회"),
-                    "발송내역": st.column_config.TextColumn("상세 발송 내역", width=600) # 내역 부분을 충분히 넓게 설정
+                    "발송일": st.column_config.TextColumn(
+                        "발송일", 
+                        width=125  # '2025-12-15' 대비 약 1.5배
+                    ),
+                    "이름": st.column_config.TextColumn(
+                        "환자명", 
+                        width=100  # 성함 대비 약 1.5배
+                    ),
+                    "그룹": st.column_config.TextColumn(
+                        "그룹명", 
+                        width=125  # '격주 발송' 대비 약 1.5배
+                    ),
+                    "회차": st.column_config.NumberColumn(
+                        "회차", 
+                        width=85,  # '12회차' 대비 약 1.5배
+                        format="%d회"
+                    ),
+                    "발송내역": st.column_config.TextColumn(
+                        "상세 발송 내역", 
+                        width="large" # 문장 길이에 맞춰 최대 확장
+                    )
                 }
             )
+            
+            # 엑셀 다운로드 버튼 (부가 기능)
+            csv = filtered_h.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 선택 환자 데이터 다운로드 (CSV)",
+                data=csv,
+                file_name=f"history_export_{datetime.now(KST).strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+            )
     else:
-        st.warning("분석할 히스토리 데이터가 없습니다.")
+        st.warning("분석할 히스토리 데이터가 없습니다. 먼저 발송 확정을 진행해 주세요.")
+
+
 
 
 
