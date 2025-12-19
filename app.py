@@ -332,10 +332,10 @@ if main_menu == "🚛 배송 및 주문 관리":
         st.write(f"🥛 원재료 우유 환산: 약 **{math.ceil((total_kg/9)*16)}** 통 투입 필요")
 
 # ==============================================================================
-# 8. 모드 2: 누적 데이터 분석 (방식 1 & 방식 2)
+# 8. 모드 2: 누적 데이터 분석 (방식 1 & 방식 2) - 표 너비 최적화 버전
 # ==============================================================================
 elif main_menu == "📈 누적 데이터 분석":
-    st.header("📈 누적 데이터 정밀 분석 (정산 및 성분)")
+    st.header("📈 누적 데이터 정밀 분석")
     h_df = get_sheet_as_df("history", "발송일")
     
     if not h_df.empty:
@@ -357,15 +357,26 @@ elif main_menu == "📈 누적 데이터 분석":
                         except: continue
             p_df = pd.DataFrame(parsed_data)
             
+            # 표 가독성을 위한 열 너비 자동 조절 함수 적용
+            st.markdown("---")
             col_s1, col_s2 = st.columns(2)
+            
             with col_s1:
                 st.markdown("#### 1️⃣ 방식 1: 패키징 그대로 합계")
-                st.info("실제로 보낸 혼합 제품 명칭별 누적 수량입니다.")
-                st.dataframe(p_df.groupby("제품")["수량"].sum().reset_index().sort_values("수량", ascending=False), use_container_width=True)
+                summary1 = p_df.groupby("제품")["수량"].sum().reset_index().sort_values("수량", ascending=False)
+                # use_container_width=False로 설정하고 column_config로 너비 최소화
+                st.dataframe(
+                    summary1, 
+                    hide_index=True,
+                    use_container_width=False, # 화면을 다 채우지 않고 내용물에 맞춤
+                    column_config={
+                        "제품": st.column_config.TextColumn("제품 명칭", width="medium"),
+                        "수량": st.column_config.NumberColumn("누적 수량", width="small", format="%d 개")
+                    }
+                )
             
             with col_s2:
-                st.markdown("#### 2️⃣ 방식 2: 개별 성분 분해 합계")
-                st.success("혼합 제품을 2,100ml 배치 레시피(병수 단위)로 쪼갠 합계입니다.")
+                st.markdown("#### 2️⃣ 방식 2: 성분 분해 합계")
                 r_db = st.session_state.recipe_db
                 stats = {}
                 for _, r in p_df.iterrows():
@@ -376,13 +387,25 @@ elif main_menu == "📈 누적 데이터 분석":
                     else:
                         stats[r['제품']] = stats.get(r['제품'], 0) + r['수량']
                 
-                st.dataframe(pd.DataFrame(list(stats.items()), columns=["성분명", "누적 총합(단위:병/개)"]).sort_values("누적 총합(단위:병/개)", ascending=False), use_container_width=True)
+                summary2 = pd.DataFrame(list(stats.items()), columns=["성분명", "총합"]).sort_values("총합", ascending=False)
+                st.dataframe(
+                    summary2, 
+                    hide_index=True,
+                    use_container_width=False, # 내용물 길이에 딱 맞춤
+                    column_config={
+                        "성분명": st.column_config.TextColumn("개별 성분(병/개)", width="medium"),
+                        "총합": st.column_config.NumberColumn("최종 소요량", width="small", format="%.1f")
+                    }
+                )
 
             st.divider()
             st.subheader("👤 선택 환자별 세부 히스토리")
-            st.dataframe(filtered_h, use_container_width=True)
+            # 세부 히스토리는 정보가 많으므로 전체 너비 유지
+            st.dataframe(filtered_h, use_container_width=True, hide_index=True)
     else:
         st.warning("분석할 히스토리 데이터가 없습니다.")
+
+
 
 # ==============================================================================
 # 9. 모드 3: 생산 및 공정 관리 (v.0.9.8 모든 탭 복원)
