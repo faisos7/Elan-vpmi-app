@@ -398,12 +398,22 @@ elif main_menu == "📈 누적 데이터 분석":
                     }
                 )
 
-            st.divider()
+st.divider()
             st.subheader("👤 선택 환자별 세부 히스토리")
-            # 세부 히스토리는 정보가 많으므로 전체 너비 유지
-            st.dataframe(filtered_h, use_container_width=True, hide_index=True)
-    else:
-        st.warning("분석할 히스토리 데이터가 없습니다.")
+            
+            # 세부 히스토리 가독성 최적화
+            st.dataframe(
+                filtered_h, 
+                use_container_width=True, # 전체 너비는 유지하되 내부 칸을 조정
+                hide_index=True,
+                column_config={
+                    "발송일": st.column_config.TextColumn("발송일", width="small"),
+                    "이름": st.column_config.TextColumn("환자명", width="small"),
+                    "그룹": st.column_config.TextColumn("그룹명", width="small"),
+                    "회차": st.column_config.NumberColumn("회차", width="small", format="%d회"),
+                    "발송내역": st.column_config.TextColumn("상세 발송 내역", width="large") # 발송내역만 넓게 설정
+                }
+            )
 
 
 
