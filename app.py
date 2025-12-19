@@ -331,9 +331,8 @@ if main_menu == "🚛 배송 및 주문 관리":
         st.metric("🧀 총 소요 커드 무게", f"{total_kg:.2f} kg")
         st.write(f"🥛 원재료 우유 환산: 약 **{math.ceil((total_kg/9)*16)}** 통 투입 필요")
 
-
 # ==============================================================================
-# 8. 모드 2: 누적 데이터 분석 (방식 1 & 방식 2) - 가독성 최적화 완료
+# 8. 모드 2: 누적 데이터 분석 (방식 1 & 방식 2 및 세부 히스토리 최적화)
 # ==============================================================================
 elif main_menu == "📈 누적 데이터 분석":
     st.header("📈 누적 데이터 정밀 분석")
@@ -348,7 +347,7 @@ elif main_menu == "📈 누적 데이터 분석":
         if submit_btn and targets:
             filtered_h = h_df[h_df['이름'].isin(targets)]
             
-            # 히스토리 데이터 분해
+            # 히스토리 데이터 분해 및 파싱
             parsed_data = []
             for _, row in filtered_h.iterrows():
                 for itm in str(row['발송내역']).split(','):
@@ -362,15 +361,16 @@ elif main_menu == "📈 누적 데이터 분석":
             col_s1, col_s2 = st.columns(2)
             
             with col_s1:
-                st.markdown("#### 1️⃣ 방식 1: 패키징 그대로 합계")
+                st.markdown("#### 1️⃣ 방식 1: 패키징 합계")
                 summary1 = p_df.groupby("제품")["수량"].sum().reset_index().sort_values("수량", ascending=False)
+                # 컴팩트한 레이아웃 적용
                 st.dataframe(
                     summary1, 
                     hide_index=True,
                     use_container_width=False,
                     column_config={
-                        "제품": st.column_config.TextColumn("제품 명칭", width="medium"),
-                        "수량": st.column_config.NumberColumn("누적 수량", width="small", format="%d 개")
+                        "제품": st.column_config.TextColumn("제품 명칭", width=150),
+                        "수량": st.column_config.NumberColumn("누적 수량", width=80, format="%d 개")
                     }
                 )
             
@@ -380,9 +380,8 @@ elif main_menu == "📈 누적 데이터 분석":
                 stats = {}
                 for _, r in p_df.iterrows():
                     if r['제품'] in r_db:
-                        rcp = r_db[r['제품']]
-                        ratio = r['수량'] / rcp['batch_size']
-                        for mn, mq in rcp['materials'].items():
+                        ratio = r['수량'] / r_db[r['제품']]['batch_size']
+                        for mn, mq in r_db[r['제품']]['materials'].items():
                             stats[mn] = stats.get(mn, 0) + (mq * ratio)
                     else:
                         stats[r['제품']] = stats.get(r['제품'], 0) + r['수량']
@@ -393,29 +392,30 @@ elif main_menu == "📈 누적 데이터 분석":
                     hide_index=True,
                     use_container_width=False,
                     column_config={
-                        "성분명": st.column_config.TextColumn("개별 성분", width="medium"),
-                        "총합": st.column_config.NumberColumn("최종 소요량", width="small", format="%.1f")
+                        "성분명": st.column_config.TextColumn("개별 성분", width=150),
+                        "총합": st.column_config.NumberColumn("최종 소요량", width=80, format="%.1f")
                     }
                 )
 
             st.divider()
             st.subheader("👤 선택 환자별 세부 히스토리")
             
-            # 세부 히스토리 가독성 최적화 (발송내역만 넓게)
+            # [이미지 피드백 반영] 열 너비 정밀 조정 (픽셀 단위 고정)
             st.dataframe(
                 filtered_h, 
-                use_container_width=True,
+                use_container_width=True, # 표 전체는 화면 너비에 맞춤
                 hide_index=True,
                 column_config={
-                    "발송일": st.column_config.TextColumn("발송일", width="small"),
-                    "이름": st.column_config.TextColumn("환자명", width="small"),
-                    "그룹": st.column_config.TextColumn("그룹명", width="small"),
-                    "회차": st.column_config.NumberColumn("회차", width="small", format="%d회"),
-                    "발송내역": st.column_config.TextColumn("상세 발송 내역", width="large")
+                    "발송일": st.column_config.TextColumn("발송일", width=100),
+                    "이름": st.column_config.TextColumn("환자명", width=80),
+                    "그룹": st.column_config.TextColumn("그룹명", width=90),
+                    "회차": st.column_config.NumberColumn("회차", width=60, format="%d회"),
+                    "발송내역": st.column_config.TextColumn("상세 발송 내역", width=600) # 내역 부분을 충분히 넓게 설정
                 }
             )
     else:
         st.warning("분석할 히스토리 데이터가 없습니다.")
+
 
 
 
