@@ -333,9 +333,8 @@ if main_menu == "🚛 배송 및 주문 관리":
 
 
 
-
 # ==============================================================================
-# 8. 모드 2: 누적 데이터 분석 (방식 1 & 방식 2 및 세부 히스토리 최적화)
+# 8. 모드 2: 누적 데이터 분석 (방식 1 & 방식 2 및 세부 히스토리 최종 최적화)
 # ==============================================================================
 elif main_menu == "📈 누적 데이터 분석":
     st.header("📈 누적 데이터 정밀 분석")
@@ -351,6 +350,7 @@ elif main_menu == "📈 누적 데이터 분석":
         if submit_btn and targets:
             filtered_h = h_df[h_df['이름'].isin(targets)]
             
+            # 데이터 파싱 로직
             parsed_data = []
             for _, row in filtered_h.iterrows():
                 for itm in str(row['발송내역']).split(','):
@@ -376,7 +376,7 @@ elif main_menu == "📈 누적 데이터 분석":
                     hide_index=True,
                     use_container_width=False,
                     column_config={
-                        "제품": st.column_config.TextColumn("제품 명칭", width=200),
+                        "제품": st.column_config.TextColumn("제품 명칭", width=180),
                         "수량": st.column_config.NumberColumn("누적 수량", width=100, format="%d 개")
                     }
                 )
@@ -400,7 +400,7 @@ elif main_menu == "📈 누적 데이터 분석":
                     hide_index=True,
                     use_container_width=False,
                     column_config={
-                        "성분명": st.column_config.TextColumn("개별 성분", width=200),
+                        "성분명": st.column_config.TextColumn("개별 성분", width=180),
                         "총합": st.column_config.NumberColumn("최종 소요량", width=100, format="%.1f")
                     }
                 )
@@ -408,33 +408,32 @@ elif main_menu == "📈 누적 데이터 분석":
             st.divider()
             st.subheader("👤 선택 환자별 세부 히스토리")
             
-            # [수정안] 전체 너비 고정 해제 및 글자 너비 1.5배 정밀 세팅
-            # use_container_width=False로 설정하여 표가 오른쪽으로 늘어지는 현상 방지
+            # [최종 요청 반영] 상세 발송 내역의 너비를 대폭 넓히고, 글자가 잘리지 않도록 설정
             st.dataframe(
                 filtered_h, 
-                use_container_width=False, 
+                use_container_width=True, # 이제 발송내역이 넓어지므로 전체 너비를 사용하여 시원하게 보여줌
                 hide_index=True,
                 column_config={
                     "발송일": st.column_config.TextColumn(
                         "발송일", 
-                        width=120  # 글자 길이의 1.5배
+                        width=120
                     ),
                     "이름": st.column_config.TextColumn(
                         "환자명", 
-                        width=100  # 글자 길이의 1.5배
+                        width=100
                     ),
                     "그룹": st.column_config.TextColumn(
                         "그룹명", 
-                        width=120  # 글자 길이의 1.5배
+                        width=120
                     ),
                     "회차": st.column_config.NumberColumn(
                         "회차", 
-                        width=80,   # 숫자 대비 1.5배
+                        width=80, 
                         format="%d회"
                     ),
                     "발송내역": st.column_config.TextColumn(
-                        "상세 발송 내역", 
-                        width=500   # 문장이 길어도 적절히 유지되는 1.5배 너비
+                        "📦 상세 발송 내역 (전체 내용)", 
+                        width=800  # 너비를 800px로 대폭 확장하여 글자 보임성 확보
                     )
                 }
             )
@@ -448,6 +447,7 @@ elif main_menu == "📈 누적 데이터 분석":
             )
     else:
         st.warning("분석할 히스토리 데이터가 없습니다.")
+
 
 
 
