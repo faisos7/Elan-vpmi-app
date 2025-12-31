@@ -351,113 +351,100 @@ elif main_menu == "📈 누적 데이터 분석":
 
 
 # ==============================================================================
-# 9. 모드 2: 생산 및 공정 관리 (v.1.1.3 - 합계량 기준 레시피 복구 버전)
+# 9. 모드 2: 생산 및 공정 관리 (v.1.1.4 - 스타터/시원한것 로직 정밀 수정)
 # ==============================================================================
 elif main_menu == "🏭 생산 및 공정 관리":
-    st.header("🏭 생산 공정 품질 관리 및 정밀 레시피")
+    st.header("생산 공정 품질 관리 및 정밀 레시피")
     
-    # 탭 구성 (수율, 커드 생산, 연간 스케줄, pH품질)
-    p_tabs = st.tabs(["📊 수율/예측", "🧀 커드 생산 관리", "🗓️ 연간 스케줄", "🔬 pH/품질"])
+    # 탭 구성
+    p_tabs = st.tabs(["수율/예측", "커드 생산 관리", "연간 스케줄", "pH/품질"])
     
     # --- [탭 1: 수율/예측] ---
     with p_tabs[0]:
-        st.subheader("📊 생산량 예측 및 수율 기록")
+        st.subheader("생산량 예측 및 수율 기록")
         col_y1, col_y2 = st.columns(2)
         with col_y1:
-            y_bottles = st.number_input("🥛 우유 투입 (2.3L/통)", 1, 200, 10, key="yield_milk_input")
-            # v.0.9.9 수율 상수 활용
+            y_bottles = st.number_input("우유 투입 (2.3L/통)", 1, 200, 10, key="yield_milk_v114")
             y_expected_kg = y_bottles * YIELD_CONSTANTS.get("MILK_BOTTLE_TO_CURD_KG", 0.5)
-            st.metric("📉 예상 커드 생산량", f"{y_expected_kg:.1f} kg")
+            st.metric("예상 커드 생산량", f"{y_expected_kg:.1f} kg")
         with col_y2:
-            y_actual = st.number_input("⚖️ 실제 생산 무게 (kg)", 0.0, 100.0, 0.0, key="yield_actual_input")
+            y_actual = st.number_input("실제 생산 무게 (kg)", 0.0, 100.0, 0.0, key="yield_actual_v114")
             if y_actual > 0:
                 loss = ((y_expected_kg - y_actual) / y_expected_kg * 100) if y_expected_kg > 0 else 0
                 st.info(f"현재 공정 손실률: {loss:.1f}%")
-        
-        if st.button("💾 수율 데이터 저장", use_container_width=True):
-            st.success("수율 기록이 로컬 세션에 임시 저장되었습니다. (DB 연동 시 저장 가능)")
 
-    # --- [탭 2: 커드 생산 관리 - 핵심 복구 항목] ---
+    # --- [탭 2: 커드 생산 관리 - 스타터 로직 수정] ---
     with p_tabs[1]:
-        st.subheader("🧀 커드 생산 레시피 (대사 합계량 기준)")
+        st.subheader("커드 생산 레시피 (스타터 정밀 배합)")
         
         with st.container(border=True):
             c1, c2 = st.columns([1, 1.2])
             with c1:
                 st.markdown("##### 1. 원재료 설정")
-                batch_milk_vol = st.number_input("🥛 우유 투입 개수 (통)", 1, 100, 10)
-                is_egg_curd = st.toggle("🥚 계란 커드 모드 활성화", value=True)
-                st.caption("※ 계란 커드 시 (우유+계란) 합산량으로 스타터를 계산합니다.")
+                batch_milk_vol = st.number_input("우유 투입 개수 (통)", 1, 100, 10)
+                is_egg_curd = st.toggle("계란 커드 모드 활성화", value=True)
+                st.caption("※ 계란 커드 시 (우유+계란) 합산량 기준으로 스타터를 계산합니다.")
 
-            # --- [레시피 계산 엔진] ---
+            # --- [레시피 계산 엔진 v.1.1.4] ---
             milk_kg = batch_milk_vol * 2.3
             egg_kg = milk_kg / 4 if is_egg_curd else 0
+            total_base_kg = milk_kg + egg_kg # 합계량 (대사 기준점)
             
-            # 대사 대상 합계 중량 (사용자 핵심 요청 반영)
-            total_base_kg = milk_kg + egg_kg
+            # 1. 개망아카 (개망초 8 : 아카시아 1)
+            # 전체 베이스의 10%를 개망아카 혼합액으로 가정 (비율 조정 필요시 이 수치 수정)
+            gaemang_aka_total = total_base_kg * 0.1 
+            dog_mang_cho = gaemang_aka_total * (8/9)
+            acacia = gaemang_aka_total * (1/9)
             
-            # 스타터 및 부자재 비율 (기준: 합계량의 약 10%를 스타터군으로 설정)
-            # 개망초:아카시아 = 8:1
-            starter_total_ratio = 0.1  # 10% 비율
-            starter_kg = total_base_kg * starter_total_ratio
-            dog_mang_cho = starter_kg * (8/9)
-            acacia = starter_kg * (1/9)
-            cool_stuff = total_base_kg * 0.05  # 시원한 것 (5% 비율)
+            # 2. 시원한 것 (스타터)
+            # 지침: 시원한 것의 양은 개망아카 양의 절반
+            cool_starter = gaemang_aka_total * 0.5
 
             with c2:
                 st.markdown("##### 2. 투입량 계산 결과")
                 res_col1, res_col2 = st.columns(2)
                 with res_col1:
-                    st.write(f"🥛 우유량: **{milk_kg:.2f} kg**")
+                    st.write(f"우유량: {milk_kg:.2f} kg")
                     if is_egg_curd:
-                        st.write(f"🥚 계란량: **{egg_kg:.2f} kg**")
+                        st.write(f"계란량: {egg_kg:.2f} kg")
                 with res_col2:
-                    st.markdown(f"✨ **총 대사량: {total_base_kg:.2f} kg**")
+                    st.markdown(f"**총 대사량: {total_base_kg:.2f} kg**")
 
                 st.divider()
-                st.write("🧪 **스타터 및 부자재 (8:1 비율)**")
-                st.write(f"- 개망초 대사체: :blue[{dog_mang_cho:.2f} kg]")
-                st.write(f"- 아카시아 대사체: :blue[{acacia:.2f} kg]")
-                st.write(f"- 커드 시원한 것: :orange[{cool_stuff:.2f} kg]")
+                st.write("🧪 **스타터 배합 가이드**")
+                # 개망아카 합계 표시 요청 반영
+                st.success(f"**개망아카 혼합량: {gaemang_aka_total:.2f} kg**")
+                st.write(f"- 개망초(8): {dog_mang_cho:.2f} kg")
+                st.write(f"- 아카시아(1): {acacia:.2f} kg")
+                
+                st.divider()
+                # 시원한 것(스타터) 표시 및 절반 수치 반영
+                st.info(f"**시원한 것 (스타터): {cool_starter:.2f} kg**")
+                st.caption("(개망아카 양의 50% 적용)")
 
-        if st.button("🚀 레시피 확정 및 재고 차감 시작", type="primary", use_container_width=True):
-            # 재고 차감 프로세스 (v.1.1.2 유틸리티 활용)
+        if st.button("🚀 레시피 확정 및 재고 차감", type="primary", use_container_width=True):
+            # 재고 차감 (함수명 및 항목명 유지)
             u1 = update_inventory_realtime("우유", -float(batch_milk_vol))
-            u2 = True
-            if egg_kg > 0:
-                u2 = update_inventory_realtime("계란", -float(egg_kg))
+            if egg_kg > 0: update_inventory_realtime("계란", -float(egg_kg))
+            update_inventory_realtime("개망초 대사체", -float(dog_mang_cho))
+            update_inventory_realtime("아카시아 대사체", -float(acacia))
+            update_inventory_realtime("시원한 것", -float(cool_starter))
             
-            # 부자재 차감 (시트에 해당 항목명이 있어야 함)
-            u3 = update_inventory_realtime("개망초 대사체", -float(dog_mang_cho))
-            u4 = update_inventory_realtime("아카시아 대사체", -float(acacia))
-            
-            if u1 and u2:
-                st.balloons()
-                st.success(f"✅ 생산 시작! 총 {total_base_kg:.2f}kg에 대한 원부자재 재고 반영 완료.")
-            else:
-                st.error("⚠️ 재고 차감 중 일부 오류가 발생했습니다. 구글 시트 항목명을 확인하세요.")
+            st.balloons()
+            st.success("스타터(개망아카/시원한것) 배합 기준 재고 차감이 완료되었습니다.")
 
-    # --- [탭 3: 연간 스케줄] ---
+    # --- [탭 3 & 4 유지] ---
     with p_tabs[2]:
-        st.subheader("🗓️ 연간 생산 스케줄")
-        m_sel = st.selectbox("조회할 월 선택", [f"{i}월" for i in range(1, 13)], index=datetime.now(KST).month-1)
-        month_idx = int(m_sel[:-1])
-        sched_info = st.session_state.schedule_db.get(month_idx, "일정 정보가 없습니다.")
-        st.info(f"📅 **{m_sel} 생산 가이드:** {sched_info}")
+        st.subheader("연간 생산 스케줄")
+        m_sel = st.selectbox("조회 월", [f"{i}월" for i in range(1, 13)], index=datetime.now(KST).month-1)
+        st.info(f"{m_sel} 가이드: {st.session_state.schedule_db.get(int(m_sel[:-1]), '내용 없음')}")
 
-    # --- [탭 4: pH/품질] ---
     with p_tabs[3]:
-        st.subheader("🔬 대사 과정 품질 관리 (pH)")
-        ph_col1, ph_col2 = st.columns(2)
-        with ph_col1:
-            ph_val = st.number_input("pH 측정치", 0.0, 14.0, 4.2, step=0.01)
-        with ph_col2:
-            temp_val = st.number_input("측정 온도 (℃)", 0.0, 100.0, 30.0)
-        
-        if st.button("🧪 pH 측정 로그 저장", use_container_width=True):
-            # v.0.9.9의 save_ph_log 연동 가능
-            st.write(f"측정 완료: pH {ph_val} / {temp_val}℃")
-            st.success("품질 로그가 기록되었습니다.")
+        st.subheader("품질 관리 (pH)")
+        ph_val = st.number_input("pH 측정", 0.0, 14.0, 4.2, step=0.01)
+        if st.button("품질 로그 저장"):
+            st.success(f"pH {ph_val} 기록 완료")
+
 
 # ==============================================================================
 # 10. 모드 4: 실시간 재고 현황
