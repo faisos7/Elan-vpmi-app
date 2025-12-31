@@ -31,34 +31,29 @@ YIELD_CONSTANTS = {
 }
 
 # ==============================================================================
-# 2. 회차 계산 엔진 (월요일 준비 보정 로직)
+# 2. 회차 계산 엔진
 # ==============================================================================
 def calculate_round_final(start_date_input, current_date_input, group_type):
     try:
         if not start_date_input or str(start_date_input).lower() in ['nan', '', 'none']:
             return 1, "날짜 미입력"
-        
         sd = pd.to_datetime(start_date_input).date()
         target_date = current_date_input.date() if isinstance(current_date_input, datetime) else current_date_input
-        
         start_monday = sd - timedelta(days=sd.weekday())
         target_monday = target_date - timedelta(days=target_date.weekday())
-        
         diff_weeks = (target_monday - start_monday).days // 7
-        
         if "매주" in str(group_type):
             r = diff_weeks + 1
         elif any(word in str(group_type) for word in ["격주", "유방암", "2주"]):
             r = (diff_weeks // 2) + 1
         else:
             r = 1
-            
         return int(max(r, 1)), sd.strftime('%Y-%m-%d')
     except:
         return 1, "형식 오류"
 
 # ==============================================================================
-# 3. 보안 및 기초 인프라 (Gspread API)
+# 3. 보안 및 기초 인프라
 # ==============================================================================
 def get_gspread_client():
     try:
@@ -82,6 +77,7 @@ def check_password():
     if not st.session_state.authenticated:
         c1, c2, c3 = st.columns([1,2,1])
         with c2:
+            # [수정] 버전 표기 v.1.1.4
             st.title("🔒 엘랑비탈 ERP v.1.1.4")
             st.markdown("---")
             with st.form("login_form"):
@@ -94,7 +90,7 @@ if not check_password():
     st.stop()
 
 # ==============================================================================
-# 4. 데이터 핸들링 로직 (Load / Save)
+# 4. 데이터 핸들링 로직
 # ==============================================================================
 @st.cache_data(ttl=60)
 def load_patient_database():
@@ -107,16 +103,13 @@ def load_patient_database():
         for row in data:
             name = str(row.get('이름', '')).strip()
             if not name: continue
-            
             items_list = []
             raw_items = str(row.get('주문내역', '')).split(',')
             for item in raw_items:
                 if ':' in item:
                     p_name, p_qty = item.split(':')
-                    try:
-                        items_list.append({"제품": p_name.strip(), "수량": int(p_qty.strip())})
+                    try: items_list.append({"제품": p_name.strip(), "수량": int(p_qty.strip())})
                     except: continue
-            
             db[name] = {
                 "group": str(row.get('그룹', '일반')),
                 "note": str(row.get('비고', '')),
@@ -153,4 +146,23 @@ def save_delivery_to_history(records):
 def get_sheet_as_df(sheet_name, sort_col=None):
     client = get_gspread_client()
     try:
-        sheet =
+        sheet = client.open("vpmi_data").worksheet(sheet_name)
+        df = pd.DataFrame(sheet.get_all_records())
+        if not df.empty and sort_col:
+            df = df.sort_values(by=sort_col, ascending=False)
+        return df
+    except: return pd.DataFrame()
+
+# ==============================================================================
+# 5. 세션 상태 초기화
+# ==============================================================================
+def init_full_erp_state():
+    if 'patient_db' not in st.session_state:
+        st.session_state.patient_db = load_patient_database()
+    if 'recipe_db' not in st.session_state:
+        st.session_state.recipe_db = {
+            "혼합 [P.P]": {"batch_size": 14, "materials": {"인삼대사체(PAGI) 항암용": 14, "송이 대사체": 28}},
+            "혼합 [Edf.P]": {"batch_size": 14, "materials": {"인삼대사체(PAGI) 항암용": 14, "개망초(EDF)": 28}},
+            "혼합 [R.P]": {"batch_size": 14, "materials": {"인삼대사체(PAGI) 항암용": 14, "장미꽃 대사체": 28}},
+            "혼합 [Ex.P]": {"batch_size": 14, "materials": {"인삼대사체(PAGI) 항암용": 14, "EX": 28}},
+            "혼합 [P.V.E]": {"batch_size": 14, "materials": {"인
