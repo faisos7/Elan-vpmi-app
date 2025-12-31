@@ -12,7 +12,7 @@ import json
 # 1. 시스템 설정 및 상수 (Config)
 # ==============================================================================
 st.set_page_config(
-    page_title="엘랑비탈 ERP v.1.1.2",
+    page_title="엘랑비탈 ERP v.1.1.4",
     page_icon="🏥",
     layout="wide",
     initial_sidebar_state="expanded"
